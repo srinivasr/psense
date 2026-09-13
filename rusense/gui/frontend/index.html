@@ -1,0 +1,165 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>RuSense</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Rajdhani:wght@500;600;700&family=Saira:wght@400;500&family=Chivo+Mono:wght@400;600&display=swap">
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+<div class="app">
+  <div class="titlebar" data-tauri-drag-region>
+    <div class="dots"><i id="dot-close" title="Close" style="cursor:pointer"></i><i></i><i></i></div>
+    <div class="brand" data-tauri-drag-region>Ru<em>Sense</em></div>
+    <div class="spacer" data-tauri-drag-region></div>
+    <span class="chip"><span class="dot"></span><span id="st-driver">linuwu_sense loaded</span></span>
+    <span class="chip">Acer Predator</span>
+    <button class="win-close" id="win-close" title="Close" aria-label="Close">✕</button>
+  </div>
+
+  <div class="shell">
+    <svg width="0" height="0" class="svg-defs">
+      <defs>
+        <linearGradient id="heat" x1="0" y1="0" x2="1" y2="1">
+          <stop offset="0" stop-color="#e8362d"/><stop offset="1" stop-color="#ff8a3d"/>
+        </linearGradient>
+      </defs>
+    </svg>
+
+    <div class="row gauges">
+      <div class="card">
+        <h2>Fan CPU</h2>
+        <div class="gauge-wrap">
+          <div class="gauge">
+            <svg viewBox="0 0 100 100">
+              <circle class="track" cx="50" cy="50" r="44" pathLength="100"/>
+              <circle class="value" id="arc-cpu" cx="50" cy="50" r="44" pathLength="100"/>
+            </svg>
+            <div class="center">
+              <span class="rpm" id="rpm-cpu">0</span>
+              <span class="unit">rpm</span>
+            </div>
+          </div>
+          <div class="gauge-side">
+            <div class="temp"><b id="temp-cpu">—</b><span>CPU temp</span></div>
+            <div class="temp"><b id="temp-sys">—</b><span>system</span></div>
+            <div class="src">hwmon/acer/fan1_input · temp1</div>
+          </div>
+        </div>
+      </div>
+
+      <div class="card">
+        <h2>Fan GPU</h2>
+        <div class="gauge-wrap">
+          <div class="gauge">
+            <svg viewBox="0 0 100 100">
+              <circle class="track" cx="50" cy="50" r="44" pathLength="100"/>
+              <circle class="value" id="arc-gpu" cx="50" cy="50" r="44" pathLength="100"/>
+            </svg>
+            <div class="center">
+              <span class="rpm" id="rpm-gpu">0</span>
+              <span class="unit">rpm</span>
+            </div>
+          </div>
+          <div class="gauge-side">
+            <div class="temp"><b id="temp-gpu">—</b><span>GPU temp</span></div>
+            <div class="temp"><b>—</b><span>vram</span></div>
+            <div class="src">hwmon/acer/fan2_input · temp2</div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="card profiles-strip">
+      <h2>Thermal Profile</h2>
+      <div class="profiles" id="profiles">
+        <button class="profile" data-v="low-power" aria-pressed="false">Eco<small>power saving</small></button>
+        <button class="profile" data-v="quiet" aria-pressed="false">Quiet<small>minimum fans</small></button>
+        <button class="profile" data-v="balanced" aria-pressed="false">Balanced<small>daily use</small></button>
+        <button class="profile" data-v="balanced-performance" aria-pressed="false">Performance<small>gaming mode</small></button>
+        <button class="profile" data-v="performance" aria-pressed="false">Turbo<small>max cooling &amp; power</small></button>
+      </div>
+    </div>
+
+    <div class="row controls">
+      <div class="card" id="card-fans">
+        <h2>Fan Control</h2>
+        <div class="modes" id="modes">
+          <button class="mode active" data-v="auto" aria-pressed="true">Auto</button>
+          <button class="mode" data-v="max" aria-pressed="false">Max</button>
+          <button class="mode" data-v="custom" aria-pressed="false">Custom</button>
+        </div>
+        <div class="slider-row">
+          <label for="s-cpu">CPU</label>
+          <input type="range" id="s-cpu" min="0" max="100" step="10" value="50" disabled>
+          <output id="o-cpu">50%</output>
+        </div>
+        <div class="slider-row">
+          <label for="s-gpu">GPU</label>
+          <input type="range" id="s-gpu" min="0" max="100" step="10" value="50" disabled>
+          <output id="o-gpu">50%</output>
+        </div>
+        <div class="src">nitro_sense/fan_speed · format "cpu,gpu" · 0,0 = auto</div>
+      </div>
+
+      <div class="card" id="card-energy">
+        <h2>Power &amp; Battery</h2>
+        <div class="setting">
+          <div class="info">
+            <div class="name">80% Battery Limit</div>
+            <div class="desc">Preserves battery health</div>
+          </div>
+          <button class="toggle" id="t-limiter" aria-label="80% Battery Limit" aria-pressed="false"></button>
+        </div>
+        <div class="setting">
+          <div class="info">
+            <div class="name">USB Charging</div>
+            <div class="desc">Charge devices when powered off</div>
+          </div>
+          <div class="segs" id="usb-segs">
+            <button class="seg" data-v="0" aria-pressed="false">off</button>
+            <button class="seg" data-v="10" aria-pressed="false">10%</button>
+            <button class="seg" data-v="20" aria-pressed="false">20%</button>
+            <button class="seg" data-v="30" aria-pressed="false">30%</button>
+          </div>
+        </div>
+        <div class="setting">
+          <div class="info">
+            <div class="name">Keyboard Backlight Timeout</div>
+            <div class="desc">Turns off backlight after 30s idle</div>
+          </div>
+          <button class="toggle" id="t-backlight" aria-label="Keyboard Backlight Timeout" aria-pressed="false"></button>
+        </div>
+        <div class="setting" id="setting-logo">
+          <div class="info">
+            <div class="name">Rear Logo Lighting</div>
+            <div class="desc">Lid logo LED backlight</div>
+          </div>
+          <button class="toggle" id="t-logo" aria-label="Rear Logo Lighting" aria-pressed="false"></button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="statusbar">
+    <span>/sys/devices/platform/acer-wmi</span>
+    <span class="sep">|</span>
+    <span>profile: <span id="st-profile">—</span></span>
+    <span class="sep">|</span>
+    <span>fans: <span id="st-fans">—</span></span>
+    <span class="sep">|</span>
+    <span>battery: <span id="st-batt">—</span></span>
+    <span class="sep">|</span>
+    <span id="st-rgb">4-zone RGB: unavailable on this model</span>
+    <span class="badge" id="st-mock" hidden>mock</span>
+  </div>
+</div>
+
+<div id="toast" aria-live="polite"><span class="p">rusense →</span> <span id="toast-msg"></span></div>
+
+<script src="app.js" defer></script>
+</body>
+</html>

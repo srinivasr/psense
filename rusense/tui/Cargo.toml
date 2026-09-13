@@ -1,0 +1,13 @@
+[package]
+name = "rusense-tui"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[[bin]]
+name = "rusense"
+path = "src/main.rs"
+
+[dependencies]
+rusense-core = { path = "../core" }
+ratatui = "0.30"

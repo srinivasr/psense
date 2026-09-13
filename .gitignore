@@ -1,0 +1,11 @@
+# Unanchored: matches cargo build dirs at any depth (rusense/target/, gui/target/, ...).
+target/
+result
+result-*
+.direnv/
+*.swp
+*~
+.DS_Store
+__pycache__/
+*.pyc
+gui/gen/schemas

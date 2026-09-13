@@ -1,0 +1,18 @@
+[package]
+name = "rusense-gui"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[[bin]]
+name = "rusense-gui"
+path = "src/main.rs"
+
+[dependencies]
+rusense-core = { path = "../core" }
+tauri = "2"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+
+[build-dependencies]
+tauri-build = "2"
