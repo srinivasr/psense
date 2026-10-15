@@ -2229,7 +2229,8 @@ enum acer_wmi_predator_v4_oc {
  
      /* Check power source */
      /* Blocking these modes since in official version this is not supported when its not plugged in AC! */
-     if(!on_AC && (profile == PLATFORM_PROFILE_PERFORMANCE || profile == PLATFORM_PROFILE_BALANCED_PERFORMANCE || profile == PLATFORM_PROFILE_QUIET)){
+     /* Blocking Turbo & Performance on battery (in official PredatorSense these require AC adapter) */
+    if (!on_AC && (profile == PLATFORM_PROFILE_PERFORMANCE || profile == PLATFORM_PROFILE_BALANCED_PERFORMANCE)) {
          return -EOPNOTSUPP;
      }
  
@@ -3408,18 +3409,58 @@ enum acer_wmi_predator_v4_oc {
      return 0;
  }
  
+static acpi_status set_logo_status(int enable, int brightness, int effect,
+                                   int red, int green, int blue);
+
+struct acer_back_logo_state {
+    bool valid;
+    int enable;
+    int brightness;
+    int r;
+    int g;
+    int b;
+};
+
+static struct acer_back_logo_state back_logo_pref;
+static DEFINE_MUTEX(back_logo_pref_lock);
+static struct delayed_work back_logo_reassert_work;
+
+static void back_logo_reassert_func(struct work_struct *work)
+{
+    struct acer_back_logo_state state;
+
+    mutex_lock(&back_logo_pref_lock);
+    state = back_logo_pref;
+    mutex_unlock(&back_logo_pref_lock);
+
+    if (state.valid && has_cap(ACER_CAP_BACK_LOGO)) {
+        set_logo_status(state.enable, state.brightness, 0, state.r, state.g, state.b);
+    }
+}
+
  static acpi_status acer_predator_state_restore(int value){
      int err = WMID_gaming_set_misc_setting(ACER_WMID_MISC_SETTING_PLATFORM_PROFILE, 
                                         value == 0 ? current_states.battery_state.thermal_profile : current_states.ac_state.thermal_profile);
      if (err)
          return err;
- 
+
      acpi_status status = acer_set_fan_speed(value == 0 ? current_states.battery_state.cpu_fan_speed : current_states.ac_state.cpu_fan_speed, 
                                  value == 0 ? current_states.battery_state.gpu_fan_speed : current_states.ac_state.gpu_fan_speed);
      if(ACPI_FAILURE(status)){
          return AE_ERROR;
      } 
- 
+
+     if (has_cap(ACER_CAP_BACK_LOGO)) {
+         mutex_lock(&back_logo_pref_lock);
+         if (back_logo_pref.valid) {
+             /* Reassert logo immediately, then schedule delayed work to override delayed EC reset */
+             set_logo_status(back_logo_pref.enable, back_logo_pref.brightness, 0,
+                             back_logo_pref.r, back_logo_pref.g, back_logo_pref.b);
+             schedule_delayed_work(&back_logo_reassert_work, msecs_to_jiffies(500));
+         }
+         mutex_unlock(&back_logo_pref_lock);
+     }
+
      return AE_OK;
  }
  
@@ -3644,6 +3685,8 @@ enum acer_wmi_predator_v4_oc {
      &battery_calibration.attr,
      &usb_charging.attr,
      &backlight_timeout.attr,
+     &lcd_override.attr,
+     &boot_animation_sound.attr,
      NULL
  }; 
  static struct attribute_group nitro_sense_attr_group = {
@@ -4246,6 +4289,15 @@ static ssize_t back_logo_store(struct device *dev, struct device_attribute *attr
     status = set_logo_status(enable, brightness, 0, (int)r, (int)g, (int)b);
     if (ACPI_FAILURE(status))
         return -ENODEV;
+    mutex_lock(&back_logo_pref_lock);
+    back_logo_pref.valid = true;
+    back_logo_pref.enable = enable;
+    back_logo_pref.brightness = brightness;
+    back_logo_pref.r = (int)r;
+    back_logo_pref.g = (int)g;
+    back_logo_pref.b = (int)b;
+    mutex_unlock(&back_logo_pref_lock);
+
     return count;
 }
 
@@ -4494,39 +4546,83 @@ static const enum acer_wmi_predator_v4_sensor_id acer_wmi_fan_channel_to_sensor_
      return 0;
  }
  
+struct acer_sensor_cache_entry {
+    unsigned long last_updated;
+    long val;
+    bool valid;
+};
+
+static struct acer_sensor_cache_entry acer_temp_cache[3];
+static struct acer_sensor_cache_entry acer_fan_cache[2];
+static DEFINE_MUTEX(acer_sensor_cache_lock);
+
  static int acer_wmi_hwmon_read(struct device *dev, enum hwmon_sensor_types type,
                     u32 attr, int channel, long *val)
  {
      u64 command = ACER_WMID_CMD_GET_PREDATOR_V4_SENSOR_READING;
      u64 result;
      int ret;
- 
+     struct acer_sensor_cache_entry *entry = NULL;
+
+     switch (type) {
+     case hwmon_temp:
+         if (channel >= 0 && channel < ARRAY_SIZE(acer_temp_cache))
+             entry = &acer_temp_cache[channel];
+         break;
+     case hwmon_fan:
+         if (channel >= 0 && channel < ARRAY_SIZE(acer_fan_cache))
+             entry = &acer_fan_cache[channel];
+         break;
+     default:
+         return -EOPNOTSUPP;
+     }
+
+     if (entry) {
+         mutex_lock(&acer_sensor_cache_lock);
+         if (entry->valid && time_before(jiffies, entry->last_updated + msecs_to_jiffies(300))) {
+             *val = entry->val;
+             mutex_unlock(&acer_sensor_cache_lock);
+             return 0;
+         }
+         mutex_unlock(&acer_sensor_cache_lock);
+     }
+
      switch (type) {
      case hwmon_temp:
          command |= FIELD_PREP(ACER_PREDATOR_V4_SENSOR_INDEX_BIT_MASK,
                        acer_wmi_temp_channel_to_sensor_id[channel]);
- 
+
          ret = WMID_gaming_get_sys_info(command, &result);
          if (ret < 0)
              return ret;
- 
+
          result = FIELD_GET(ACER_PREDATOR_V4_SENSOR_READING_BIT_MASK, result);
          *val = result * MILLIDEGREE_PER_DEGREE;
-         return 0;
+         break;
      case hwmon_fan:
          command |= FIELD_PREP(ACER_PREDATOR_V4_SENSOR_INDEX_BIT_MASK,
                        acer_wmi_fan_channel_to_sensor_id[channel]);
- 
+
          ret = WMID_gaming_get_sys_info(command, &result);
          if (ret < 0)
              return ret;
- 
+
          *val = FIELD_GET(ACER_PREDATOR_V4_SENSOR_READING_BIT_MASK, result);
-         return 0;
+         break;
      default:
          return -EOPNOTSUPP;
      }
- } 
+
+     if (entry) {
+         mutex_lock(&acer_sensor_cache_lock);
+         entry->val = *val;
+         entry->last_updated = jiffies;
+         entry->valid = true;
+         mutex_unlock(&acer_sensor_cache_lock);
+     }
+
+     return 0;
+ }
  
  static const struct hwmon_channel_info *const acer_wmi_hwmon_info[] = {
      HWMON_CHANNEL_INFO(temp,
@@ -4583,6 +4679,7 @@ static const enum acer_wmi_predator_v4_sensor_id acer_wmi_fan_channel_to_sensor_
  static int __init acer_wmi_init(void)
  {
      int err;
+     INIT_DELAYED_WORK(&back_logo_reassert_work, back_logo_reassert_func);
  
      pr_info("Acer Laptop ACPI-WMI Extras\n");
  
@@ -4734,6 +4831,7 @@ static const enum acer_wmi_predator_v4_sensor_id acer_wmi_fan_channel_to_sensor_
  
  static void __exit acer_wmi_exit(void)
  {
+     cancel_delayed_work_sync(&back_logo_reassert_work);
      if (wmi_has_guid(ACERWMID_EVENT_GUID))
          acer_wmi_input_destroy();
  

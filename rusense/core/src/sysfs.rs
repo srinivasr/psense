@@ -3,9 +3,10 @@
 use std::fs;
 use std::io::ErrorKind;
 use std::path::{Path, PathBuf};
+use std::sync::Mutex;
 
 use crate::domain::{
-    Capabilities, FanMode, PowerSettings, Profile, ProfileSet, SenseError, Telemetry,
+    Capabilities, FanMode, KeyboardRgb, PowerSettings, Profile, ProfileSet, SenseError, Telemetry,
     UsbChargeLevel,
 };
 use crate::port::SensePort;
@@ -19,7 +20,7 @@ const POWER_SUPPLY: &str = "/sys/class/power_supply";
 ///
 /// Capabilities are probed once at construction. The acer `hwmon` entry
 /// (the one under `hwmon/` whose `name` file reads `acer`) and the battery
-/// are re-discovered on every read. Missing pieces degrade gracefully in
+/// are cached after first discovery. Missing pieces degrade gracefully in
 /// [`telemetry`] instead of erroring — mirroring the "hide what doesn't
 /// exist" capability policy: without an acer hwmon, fan RPMs read as 0 and
 /// temperatures as `[0.0; 3]`; without a `BAT*` entry under the
@@ -32,6 +33,11 @@ pub struct SysfsSense {
     base: PathBuf,
     power_supply: PathBuf,
     caps: Capabilities,
+    sense_dir: PathBuf,
+    hwmon_cache: Mutex<Option<PathBuf>>,
+    battery_cache: Mutex<Option<PathBuf>>,
+    profile_dir_cache: Mutex<Option<PathBuf>>,
+    desired_back_logo: Mutex<Option<String>>,
 }
 
 /// Read a sysfs file, trimming surrounding whitespace/newlines.
@@ -136,11 +142,18 @@ impl SysfsSense {
             power: sense_dir.join("battery_limiter").is_file(),
             four_zone_kb: base.join("four_zoned_kb").is_dir(),
             back_logo: base.join("back_logo").join("color").is_file(),
+            lcd_override: sense_dir.join("lcd_override").is_file(),
+            boot_sound: sense_dir.join("boot_animation_sound").is_file(),
         };
         Ok(Self {
             base,
             power_supply,
             caps,
+            sense_dir,
+            hwmon_cache: Mutex::new(None),
+            battery_cache: Mutex::new(None),
+            profile_dir_cache: Mutex::new(None),
+            desired_back_logo: Mutex::new(None),
         })
     }
 
@@ -154,10 +167,36 @@ impl SysfsSense {
     }
 
     fn sense(&self, file: &str) -> PathBuf {
-        if self.base.join("predator_sense").is_dir() {
-            self.base.join("predator_sense").join(file)
+        self.sense_dir.join(file)
+    }
+
+    fn hwmon(&self) -> Option<PathBuf> {
+        if let Ok(mut cache) = self.hwmon_cache.lock() {
+            if let Some(ref p) = *cache {
+                if p.exists() {
+                    return Some(p.clone());
+                }
+            }
+            let found = find_hwmon(&self.base.join("hwmon"));
+            *cache = found.clone();
+            found
         } else {
-            self.base.join("nitro_sense").join(file)
+            find_hwmon(&self.base.join("hwmon"))
+        }
+    }
+
+    fn battery_path(&self) -> Option<PathBuf> {
+        if let Ok(mut cache) = self.battery_cache.lock() {
+            if let Some(ref p) = *cache {
+                if p.exists() {
+                    return Some(p.clone());
+                }
+            }
+            let found = find_battery(&self.power_supply);
+            *cache = found.clone();
+            found
+        } else {
+            find_battery(&self.power_supply)
         }
     }
 
@@ -165,20 +204,37 @@ impl SysfsSense {
     /// from a kernel-global IDA, so it depends on registration order
     /// (amd-pmf etc. may claim 0 first) — discovered, never hardcoded.
     fn profile_dir(&self) -> Result<PathBuf, SenseError> {
-        let dir = self.base.join("platform-profile");
-        fs::read_dir(&dir)
-            .map_err(|e| SenseError::Io(format!("{}: {e}", dir.display())))?
-            .flatten()
-            .map(|e| e.path())
-            .find(|p| p.is_dir())
-            .ok_or_else(|| SenseError::Io(format!("{}: no entries", dir.display())))
+        if let Ok(mut cache) = self.profile_dir_cache.lock() {
+            if let Some(ref p) = *cache {
+                if p.exists() {
+                    return Ok(p.clone());
+                }
+            }
+            let dir = self.base.join("platform-profile");
+            let found = fs::read_dir(&dir)
+                .map_err(|e| SenseError::Io(format!("{}: {e}", dir.display())))?
+                .flatten()
+                .map(|e| e.path())
+                .find(|p| p.is_dir())
+                .ok_or_else(|| SenseError::Io(format!("{}: no entries", dir.display())))?;
+            *cache = Some(found.clone());
+            Ok(found)
+        } else {
+            let dir = self.base.join("platform-profile");
+            fs::read_dir(&dir)
+                .map_err(|e| SenseError::Io(format!("{}: {e}", dir.display())))?
+                .flatten()
+                .map(|e| e.path())
+                .find(|p| p.is_dir())
+                .ok_or_else(|| SenseError::Io(format!("{}: no entries", dir.display())))
+        }
     }
 
     /// Battery percent and status, defaulting to `(0, "Unknown")` when no
     /// `BAT*` entry exists — or when it vanishes between discovery and read.
     fn battery(&self) -> Result<(u8, String), SenseError> {
         let absent = || (0, "Unknown".to_string());
-        let Some(bat) = find_battery(&self.power_supply) else {
+        let Some(bat) = self.battery_path() else {
             return Ok(absent());
         };
         let Some(raw) = read_if_present(&bat.join("capacity"))? else {
@@ -211,7 +267,7 @@ impl SensePort for SysfsSense {
     }
 
     fn telemetry(&self) -> Result<Telemetry, SenseError> {
-        let (fan_cpu_rpm, fan_gpu_rpm, temps) = match find_hwmon(&self.base.join("hwmon")) {
+        let (fan_cpu_rpm, fan_gpu_rpm, temps) = match self.hwmon() {
             Some(hw) => {
                 let rpm = |file: &str| parse_u32(&read_trimmed(&hw.join(file))?, file);
                 let temp = |file: &str| parse_millideg(&read_trimmed(&hw.join(file))?, file);
@@ -276,17 +332,44 @@ impl SensePort for SysfsSense {
             &read_trimmed(&self.sense("backlight_timeout"))?,
             "backlight_timeout",
         )?;
+        let lcd_override = if self.caps.lcd_override {
+            parse_flag(
+                &read_trimmed(&self.sense("lcd_override"))?,
+                "lcd_override",
+            )
+            .unwrap_or(false)
+        } else {
+            false
+        };
+        let boot_sound = if self.caps.boot_sound {
+            parse_flag(
+                &read_trimmed(&self.sense("boot_animation_sound"))?,
+                "boot_animation_sound",
+            )
+            .unwrap_or(false)
+        } else {
+            false
+        };
         Ok(PowerSettings {
             limiter,
             usb,
             backlight_timeout,
+            lcd_override,
+            boot_sound,
         })
     }
 
     fn set_power(&mut self, s: PowerSettings) -> Result<(), SenseError> {
         write_value(&self.sense("battery_limiter"), flag(s.limiter))?;
         write_value(&self.sense("usb_charging"), &s.usb.get().to_string())?;
-        write_value(&self.sense("backlight_timeout"), flag(s.backlight_timeout))
+        write_value(&self.sense("backlight_timeout"), flag(s.backlight_timeout))?;
+        if self.caps.lcd_override {
+            let _ = write_value(&self.sense("lcd_override"), flag(s.lcd_override));
+        }
+        if self.caps.boot_sound {
+            let _ = write_value(&self.sense("boot_animation_sound"), flag(s.boot_sound));
+        }
+        Ok(())
     }
 
     fn back_logo(&self) -> Result<bool, SenseError> {
@@ -301,16 +384,23 @@ impl SensePort for SysfsSense {
             false
         };
 
-        let mut desired_val = None;
-        for state_file in self.back_logo_state_paths() {
-            if let Ok(desired) = fs::read_to_string(&state_file) {
-                let trimmed = desired.trim();
-                if trimmed == "0" || trimmed == "1" {
-                    desired_val = Some(trimmed.to_string());
-                    break;
+        let desired_val = if let Ok(mut cache) = self.desired_back_logo.lock() {
+            if cache.is_none() {
+                for state_file in self.back_logo_state_paths() {
+                    if let Ok(desired) = fs::read_to_string(&state_file) {
+                        let trimmed = desired.trim();
+                        if trimmed == "0" || trimmed == "1" {
+                            *cache = Some(trimmed.to_string());
+                            break;
+                        }
+                    }
                 }
             }
-        }
+            cache.clone()
+        } else {
+            None
+        };
+
         if let Some(desired) = desired_val {
             if desired == "0" && hw_on {
                 // Hardware reset the LED to ON (e.g. AC power unplug/plug event),
@@ -331,16 +421,50 @@ impl SensePort for SysfsSense {
         let val = if on { "ffffff,100,1" } else { "ffffff,0,0" };
         write_value(&path, val)?;
 
+        let state_val = if on { "1" } else { "0" };
+        if let Ok(mut cache) = self.desired_back_logo.lock() {
+            *cache = Some(state_val.to_string());
+        }
+
         for state_file in self.back_logo_state_paths() {
             if let Some(parent) = state_file.parent() {
                 let _ = fs::create_dir_all(parent);
             }
-            let _ = fs::write(&state_file, if on { "1" } else { "0" });
+            let _ = fs::write(&state_file, state_val);
         }
 
         Ok(())
     }
+
+    fn keyboard_rgb(&self) -> Result<KeyboardRgb, SenseError> {
+        let path = self.base.join("four_zoned_kb").join("four_zone_mode");
+        let raw = read_trimmed(&path)?;
+        KeyboardRgb::from_sysfs(&raw)
+    }
+
+    fn set_keyboard_rgb(&mut self, rgb: &KeyboardRgb) -> Result<(), SenseError> {
+        let path = self.base.join("four_zoned_kb").join("four_zone_mode");
+        write_value(&path, &rgb.to_sysfs())
+    }
+
+    fn set_per_zone_rgb(
+        &mut self,
+        z1: &str,
+        z2: &str,
+        z3: &str,
+        z4: &str,
+        brightness: u8,
+    ) -> Result<(), SenseError> {
+        let path = self.base.join("four_zoned_kb").join("per_zone_mode");
+        let payload = format!("{},{},{},{},{}", z1, z2, z3, z4, brightness);
+        write_value(&path, &payload)
+    }
+
+    fn is_predator(&self) -> bool {
+        self.sense_dir.file_name().map_or(true, |n| n == "predator_sense")
+    }
 }
+
 
 #[cfg(test)]
 mod tests {
@@ -369,6 +493,8 @@ mod tests {
         write(&base.join("nitro_sense/battery_calibration"), "0\n");
         write(&base.join("nitro_sense/usb_charging"), "30\n");
         write(&base.join("nitro_sense/backlight_timeout"), "1\n");
+        write(&base.join("nitro_sense/lcd_override"), "1\n");
+        write(&base.join("nitro_sense/boot_animation_sound"), "1\n");
         write(
             &base.join("platform-profile/platform-profile-0/choices"),
             "low-power quiet balanced balanced-performance\n",
@@ -492,11 +618,15 @@ mod tests {
             limiter: false,
             usb: UsbChargeLevel::new(10).unwrap(),
             backlight_timeout: false,
+            lcd_override: false,
+            boot_sound: false,
         };
         sense.set_power(next.clone()).unwrap();
         assert_eq!(read(&base.join("nitro_sense/battery_limiter")), "0");
         assert_eq!(read(&base.join("nitro_sense/usb_charging")), "10");
         assert_eq!(read(&base.join("nitro_sense/backlight_timeout")), "0");
+        assert_eq!(read(&base.join("nitro_sense/lcd_override")), "0");
+        assert_eq!(read(&base.join("nitro_sense/boot_animation_sound")), "0");
         assert_eq!(sense.power().unwrap(), next);
     }
 

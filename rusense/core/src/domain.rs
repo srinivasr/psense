@@ -159,12 +159,71 @@ pub struct Telemetry {
     pub battery_status: String,
 }
 
+/// Keyboard RGB configuration for 4-zone lighting.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct KeyboardRgb {
+    pub mode: u8,
+    pub speed: u8,
+    pub brightness: u8,
+    pub direction: u8,
+    pub red: u8,
+    pub green: u8,
+    pub blue: u8,
+}
+
+impl Default for KeyboardRgb {
+    fn default() -> Self {
+        Self {
+            mode: 0, // static
+            speed: 0,
+            brightness: 100,
+            direction: 0,
+            red: 0,
+            green: 200,
+            blue: 236, // Predator Neon Cyan (#00c8ec)
+        }
+    }
+}
+
+impl KeyboardRgb {
+    pub fn to_sysfs(&self) -> String {
+        format!(
+            "{},{},{},{},{},{},{}",
+            self.mode, self.speed, self.brightness, self.direction, self.red, self.green, self.blue
+        )
+    }
+
+    pub fn from_sysfs(raw: &str) -> Result<Self, SenseError> {
+        let parts: Vec<&str> = raw.trim().split(',').collect();
+        if parts.len() < 7 {
+            return Err(SenseError::Malformed(format!("keyboard_rgb: {raw}")));
+        }
+        let parse = |idx: usize| -> Result<u8, SenseError> {
+            parts[idx]
+                .trim()
+                .parse::<u8>()
+                .map_err(|_| SenseError::Malformed(format!("keyboard_rgb part {idx}: {raw}")))
+        };
+        Ok(Self {
+            mode: parse(0)?,
+            speed: parse(1)?,
+            brightness: parse(2)?,
+            direction: parse(3)?,
+            red: parse(4)?,
+            green: parse(5)?,
+            blue: parse(6)?,
+        })
+    }
+}
+
 /// Power-related toggles exposed by the driver.
 #[derive(Debug, Clone, PartialEq)]
 pub struct PowerSettings {
     pub limiter: bool,
     pub usb: UsbChargeLevel,
     pub backlight_timeout: bool,
+    pub lcd_override: bool,
+    pub boot_sound: bool,
 }
 
 /// Which feature groups the detected hardware supports.
@@ -174,6 +233,8 @@ pub struct Capabilities {
     pub power: bool,
     pub four_zone_kb: bool,
     pub back_logo: bool,
+    pub lcd_override: bool,
+    pub boot_sound: bool,
 }
 
 #[cfg(test)]
@@ -416,6 +477,8 @@ mod tests {
             limiter: true,
             usb: UsbChargeLevel::new(10).unwrap(),
             backlight_timeout: false,
+            lcd_override: false,
+            boot_sound: false,
         };
         let b = a.clone();
         assert_eq!(a, b);
@@ -430,11 +493,15 @@ mod tests {
             power: true,
             four_zone_kb: false,
             back_logo: true,
+            lcd_override: false,
+            boot_sound: false,
         };
         let b = a; // Copy: `a` stays usable.
         assert!(a.fan_control);
         assert!(b.power);
         assert!(!b.four_zone_kb);
         assert!(b.back_logo);
+        assert!(!b.lcd_override);
+        assert!(!b.boot_sound);
     }
 }

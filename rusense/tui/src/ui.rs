@@ -9,14 +9,22 @@ use rusense_core::FanMode;
 
 use crate::app::App;
 
-/// Project accent (#e8362d), same as the GUI mockup.
-const ACCENT: Color = Color::Rgb(232, 54, 45);
+/// Project accent color (Predator Neon Cyan #00c8ec for Predator, Nitro Fire Red #e8362d for Nitro).
+fn accent_color(app: &App) -> Color {
+    if app.is_predator {
+        Color::Rgb(0, 200, 236)
+    } else {
+        Color::Rgb(232, 54, 45)
+    }
+}
+
 /// Full-scale RPM for the fan gauges.
 const MAX_RPM: f64 = 6000.0;
 
 /// Render the whole UI. Sections without the matching capability are
 /// hidden entirely, mirroring the official AcerSense behavior.
 pub fn render(frame: &mut Frame, app: &App) {
+    let accent = accent_color(app);
     // The footer is split off first so it survives small heights: only
     // what remains is disputed by the section constraints.
     let [main_area, footer_area] = Layout::vertical([
@@ -40,13 +48,13 @@ pub fn render(frame: &mut Frame, app: &App) {
     let mut areas = areas.iter().copied();
     let mut next = || areas.next().expect("one area per constraint");
 
-    render_monitor(frame, app, next());
-    render_profiles(frame, app, next());
+    render_monitor(frame, app, next(), accent);
+    render_profiles(frame, app, next(), accent);
     if app.caps.fan_control {
-        render_fans(frame, app, next());
+        render_fans(frame, app, next(), accent);
     }
     if app.caps.power || app.caps.back_logo {
-        render_power(frame, app, next());
+        render_power(frame, app, next(), accent);
     }
     render_footer(frame, app, footer_area);
 }
@@ -66,10 +74,11 @@ fn footer_height(app: &App, width: u16) -> u16 {
 }
 
 /// Header block with fan gauges, current temps and the CPU sparkline.
-fn render_monitor(frame: &mut Frame, app: &App, area: Rect) {
+fn render_monitor(frame: &mut Frame, app: &App, area: Rect, accent: Color) {
     let badge = if app.mock { " mock " } else { " driver ok " };
+    let title = if app.is_predator { " PREDATOR SENSE " } else { " NITRO SENSE " };
     let block = Block::bordered()
-        .title(Line::from(" RUSENSE ").fg(ACCENT).bold())
+        .title(Line::from(title).fg(accent).bold())
         .title_top(Line::from(badge).right_aligned().dim());
     let inner = block.inner(area);
     frame.render_widget(block, area);
@@ -84,8 +93,8 @@ fn render_monitor(frame: &mut Frame, app: &App, area: Rect) {
 
     let latest = app.history.latest();
     let (cpu_rpm, gpu_rpm) = latest.map_or((0, 0), |t| (t.fan_cpu_rpm, t.fan_gpu_rpm));
-    render_fan_gauge(frame, cpu_row, "FAN CPU", cpu_rpm);
-    render_fan_gauge(frame, gpu_row, "FAN GPU", gpu_rpm);
+    render_fan_gauge(frame, cpu_row, "FAN CPU", cpu_rpm, accent);
+    render_fan_gauge(frame, gpu_row, "FAN GPU", gpu_rpm, accent);
 
     let temps = latest.map_or_else(
         || "waiting for reading...".to_string(),
@@ -102,12 +111,12 @@ fn render_monitor(frame: &mut Frame, app: &App, area: Rect) {
     let spark = Sparkline::default()
         .data(series.iter().map(|&t| t.round() as u64))
         .max(100)
-        .style(Style::new().fg(ACCENT));
+        .style(Style::new().fg(accent));
     frame.render_widget(spark, spark_row);
 }
 
 /// One labeled gauge: `ratio = rpm / 6000` clamped, label in RPM.
-fn render_fan_gauge(frame: &mut Frame, area: Rect, name: &str, rpm: u32) {
+fn render_fan_gauge(frame: &mut Frame, area: Rect, name: &str, rpm: u32, accent: Color) {
     let [label, gauge] =
         Layout::horizontal([Constraint::Length(9), Constraint::Min(0)]).areas(area);
     frame.render_widget(Paragraph::new(name), label);
@@ -115,13 +124,13 @@ fn render_fan_gauge(frame: &mut Frame, area: Rect, name: &str, rpm: u32) {
         Gauge::default()
             .ratio((f64::from(rpm) / MAX_RPM).clamp(0.0, 1.0))
             .label(format!("{rpm} rpm"))
-            .gauge_style(Style::new().fg(ACCENT)),
+            .gauge_style(Style::new().fg(accent)),
         gauge,
     );
 }
 
 /// Available profiles inline, active one in accent bold, `[n]` hints.
-fn render_profiles(frame: &mut Frame, app: &App, area: Rect) {
+fn render_profiles(frame: &mut Frame, app: &App, area: Rect, accent: Color) {
     let mut spans: Vec<Span> = Vec::new();
     match &app.profiles {
         Some(set) => {
@@ -129,7 +138,7 @@ fn render_profiles(frame: &mut Frame, app: &App, area: Rect) {
                 spans.push(Span::raw(format!("[{}] ", i + 1)).dim());
                 let name = Span::raw(profile.as_str());
                 spans.push(if *profile == set.active {
-                    name.fg(ACCENT).bold()
+                    name.fg(accent).bold()
                 } else {
                     name
                 });
@@ -145,10 +154,10 @@ fn render_profiles(frame: &mut Frame, app: &App, area: Rect) {
 }
 
 /// Fan mode selector and the two custom-duty sliders.
-fn render_fans(frame: &mut Frame, app: &App, area: Rect) {
+fn render_fans(frame: &mut Frame, app: &App, area: Rect, accent: Color) {
     let highlight = |active: bool, text: &str| {
         if active {
-            Span::raw(text.to_uppercase()).fg(ACCENT).bold()
+            Span::raw(text.to_uppercase()).fg(accent).bold()
         } else {
             Span::raw(text.to_string())
         }
@@ -164,7 +173,7 @@ fn render_fans(frame: &mut Frame, app: &App, area: Rect) {
 
     let focus = |focused: bool, name: &str| {
         if focused {
-            Span::raw(name.to_string()).fg(ACCENT).bold()
+            Span::raw(name.to_string()).fg(accent).bold()
         } else {
             Span::raw(name.to_string())
         }
@@ -197,38 +206,47 @@ fn slider_bar(value: u8) -> String {
 }
 
 /// Power toggles plus battery state from the latest telemetry sample.
-fn render_power(frame: &mut Frame, app: &App, area: Rect) {
+fn render_power(frame: &mut Frame, app: &App, area: Rect, accent: Color) {
     let on_off = |v: bool| {
         if v {
-            Span::raw("ON").fg(ACCENT).bold()
+            Span::raw("ON").fg(accent).bold()
         } else {
             Span::raw("OFF").dim()
         }
     };
-    let toggles = match (&app.power, app.caps.back_logo) {
-        (Some(p), true) => Line::from(vec![
+    let toggles = if let Some(p) = &app.power {
+        let mut spans = vec![
             Span::raw("[b] 80% limit: ").dim(),
             on_off(p.limiter),
             Span::raw("   [u] usb: ").dim(),
             Span::raw(format!("{}%", p.usb.get())),
             Span::raw("   [k] backlight: ").dim(),
             on_off(p.backlight_timeout),
-            Span::raw("   [l] logo: ").dim(),
-            on_off(app.back_logo),
-        ]),
-        (Some(p), false) => Line::from(vec![
-            Span::raw("[b] 80% limit: ").dim(),
-            on_off(p.limiter),
-            Span::raw("   [u] usb: ").dim(),
-            Span::raw(format!("{}%", p.usb.get())),
-            Span::raw("   [k] backlight: ").dim(),
-            on_off(p.backlight_timeout),
-        ]),
-        (None, true) => Line::from(vec![
+        ];
+        if app.caps.back_logo {
+            spans.push(Span::raw("   [l] logo: ").dim());
+            spans.push(on_off(app.back_logo));
+        }
+        if app.caps.lcd_override {
+            spans.push(Span::raw("   [o] lcd: ").dim());
+            spans.push(on_off(p.lcd_override));
+        }
+        if app.caps.boot_sound {
+            spans.push(Span::raw("   [s] sound: ").dim());
+            spans.push(on_off(p.boot_sound));
+        }
+        if app.caps.four_zone_kb {
+            spans.push(Span::raw("   [r] rgb: ").dim());
+            spans.push(Span::raw("CYCLE").fg(accent));
+        }
+        Line::from(spans)
+    } else if app.caps.back_logo {
+        Line::from(vec![
             Span::raw("[l] logo: ").dim(),
             on_off(app.back_logo),
-        ]),
-        (None, false) => Line::from(Span::raw("power controls unavailable").dim()),
+        ])
+    } else {
+        Line::from(Span::raw("power controls unavailable").dim())
     };
     let battery = app.history.latest().map_or_else(
         || Line::from(Span::raw("battery: —").dim()),
@@ -260,10 +278,13 @@ fn render_footer(frame: &mut Frame, app: &App, area: Rect) {
             }
             if app.caps.fan_control {
                 hints.push("a/m/c fans".to_string());
-                hints.push("tab/←→ adjust".to_string());
+                hints.push("tab/←→".to_string());
             }
             if app.caps.power {
                 hints.push("b/u/k power".to_string());
+            }
+            if app.caps.four_zone_kb {
+                hints.push("r rgb".to_string());
             }
             if app.caps.back_logo {
                 hints.push("l logo".to_string());
@@ -280,8 +301,8 @@ mod tests {
     use ratatui::backend::TestBackend;
     use ratatui::Terminal;
     use rusense_core::{
-        connect, Capabilities, FanMode, MockSense, PowerSettings, Profile, ProfileSet, SenseError,
-        SensePort, Telemetry,
+        connect, Capabilities, FanMode, KeyboardRgb, MockSense, PowerSettings, Profile, ProfileSet,
+        SenseError, SensePort, Telemetry,
     };
 
     use super::*;
@@ -310,7 +331,7 @@ mod tests {
         let mut app = App::new(connect(true).unwrap(), true);
         app.on_tick();
         let text = render_to_text(&app);
-        assert!(text.contains("RUSENSE"));
+        assert!(text.contains("PREDATOR SENSE"));
         assert!(text.contains("balanced-performance"));
         assert!(text.contains("rpm"));
         assert!(text.contains("PROFILES"));
@@ -350,6 +371,8 @@ mod tests {
                 power: false,
                 four_zone_kb: false,
                 back_logo: false,
+                lcd_override: false,
+                boot_sound: false,
             }
         }
         fn telemetry(&self) -> Result<Telemetry, SenseError> {
@@ -379,6 +402,22 @@ mod tests {
         fn set_back_logo(&mut self, on: bool) -> Result<(), SenseError> {
             self.0.set_back_logo(on)
         }
+        fn keyboard_rgb(&self) -> Result<KeyboardRgb, SenseError> {
+            self.0.keyboard_rgb()
+        }
+        fn set_keyboard_rgb(&mut self, rgb: &KeyboardRgb) -> Result<(), SenseError> {
+            self.0.set_keyboard_rgb(rgb)
+        }
+        fn set_per_zone_rgb(
+            &mut self,
+            z1: &str,
+            z2: &str,
+            z3: &str,
+            z4: &str,
+            brightness: u8,
+        ) -> Result<(), SenseError> {
+            self.0.set_per_zone_rgb(z1, z2, z3, z4, brightness)
+        }
     }
 
     #[test]
@@ -398,7 +437,7 @@ mod tests {
         let mut app = App::new(connect(true).unwrap(), true);
         app.on_tick();
         let text = render_sized(&app, 80, 10);
-        assert!(text.contains("RUSENSE"));
+        assert!(text.contains("PREDATOR SENSE"));
         assert!(text.contains("q quit"));
         // Even at 2 rows the status line keeps its slot.
         assert!(render_sized(&app, 80, 2).contains("q quit"));
@@ -464,6 +503,22 @@ mod tests {
         fn set_back_logo(&mut self, on: bool) -> Result<(), SenseError> {
             self.0.set_back_logo(on)
         }
+        fn keyboard_rgb(&self) -> Result<KeyboardRgb, SenseError> {
+            self.0.keyboard_rgb()
+        }
+        fn set_keyboard_rgb(&mut self, rgb: &KeyboardRgb) -> Result<(), SenseError> {
+            self.0.set_keyboard_rgb(rgb)
+        }
+        fn set_per_zone_rgb(
+            &mut self,
+            z1: &str,
+            z2: &str,
+            z3: &str,
+            z4: &str,
+            brightness: u8,
+        ) -> Result<(), SenseError> {
+            self.0.set_per_zone_rgb(z1, z2, z3, z4, brightness)
+        }
     }
 
     #[test]
@@ -479,7 +534,7 @@ mod tests {
         let mut app = App::new(Box::new(BareCaps(MockSense::new())), true);
         app.on_tick();
         let text = render_to_text(&app);
-        assert!(text.contains("RUSENSE"));
+        assert!(text.contains("PREDATOR SENSE"));
         assert!(text.contains("PROFILES"));
         assert!(!text.contains("FANS"));
         assert!(!text.contains("POWER"));

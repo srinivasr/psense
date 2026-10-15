@@ -1,7 +1,7 @@
 //! The hexagonal boundary: what any Sense backend must provide.
 
 use crate::domain::{
-    Capabilities, FanMode, PowerSettings, Profile, ProfileSet, SenseError, Telemetry,
+    Capabilities, FanMode, KeyboardRgb, PowerSettings, Profile, ProfileSet, SenseError, Telemetry,
 };
 
 /// Port implemented by every backend (real sysfs driver, mock, ...).
@@ -83,4 +83,44 @@ pub trait SensePort {
     /// [`SenseError::ReadOnly`] when lacking write permission;
     /// [`SenseError::Io`] on other write failure.
     fn set_back_logo(&mut self, on: bool) -> Result<(), SenseError>;
+
+    /// Current 4-zone keyboard RGB configuration.
+    ///
+    /// # Errors
+    /// [`SenseError::Io`] on read failure; [`SenseError::Malformed`] when
+    /// the driver content cannot be parsed.
+    fn keyboard_rgb(&self) -> Result<KeyboardRgb, SenseError> {
+        Ok(KeyboardRgb::default())
+    }
+
+    /// Apply 4-zone keyboard RGB configuration.
+    ///
+    /// # Errors
+    /// [`SenseError::ReadOnly`] when lacking write permission;
+    /// [`SenseError::Io`] on other write failure.
+    fn set_keyboard_rgb(&mut self, _rgb: &KeyboardRgb) -> Result<(), SenseError> {
+        Ok(())
+    }
+
+    /// Apply per-zone keyboard RGB colors (hex formatted zones 1-4 and brightness).
+    ///
+    /// # Errors
+    /// [`SenseError::ReadOnly`] when lacking write permission;
+    /// [`SenseError::Io`] on other write failure.
+    fn set_per_zone_rgb(
+        &mut self,
+        _z1: &str,
+        _z2: &str,
+        _z3: &str,
+        _z4: &str,
+        _brightness: u8,
+    ) -> Result<(), SenseError> {
+        Ok(())
+    }
+
+    /// Whether the detected hardware is Predator (true) or Nitro (false).
+    fn is_predator(&self) -> bool {
+        true
+    }
 }
+

@@ -64,10 +64,12 @@ async fn set_power(
     limiter: bool,
     usb: u8,
     backlight: bool,
+    lcd_override: bool,
+    boot_sound: bool,
     app: tauri::State<'_, AppState>,
 ) -> Result<UiState, String> {
     let mut port = app.port();
-    state::apply_power(&mut **port, limiter, usb, backlight)?;
+    state::apply_power(&mut **port, limiter, usb, backlight, lcd_override, boot_sound)?;
     state::read_state(&**port, app.mock)
 }
 
@@ -78,6 +80,36 @@ async fn set_back_logo(
 ) -> Result<UiState, String> {
     let mut port = app.port();
     state::apply_back_logo(&mut **port, on)?;
+    state::read_state(&**port, app.mock)
+}
+
+#[tauri::command]
+async fn set_keyboard_rgb(
+    mode: u8,
+    speed: u8,
+    brightness: u8,
+    direction: u8,
+    red: u8,
+    green: u8,
+    blue: u8,
+    app: tauri::State<'_, AppState>,
+) -> Result<UiState, String> {
+    let mut port = app.port();
+    state::apply_keyboard_rgb(&mut **port, mode, speed, brightness, direction, red, green, blue)?;
+    state::read_state(&**port, app.mock)
+}
+
+#[tauri::command]
+async fn set_per_zone_rgb(
+    z1: String,
+    z2: String,
+    z3: String,
+    z4: String,
+    brightness: u8,
+    app: tauri::State<'_, AppState>,
+) -> Result<UiState, String> {
+    let mut port = app.port();
+    state::apply_per_zone_rgb(&mut **port, &z1, &z2, &z3, &z4, brightness)?;
     state::read_state(&**port, app.mock)
 }
 
@@ -131,6 +163,8 @@ fn main() -> ExitCode {
             set_fan,
             set_power,
             set_back_logo,
+            set_keyboard_rgb,
+            set_per_zone_rgb,
             close_window
         ])
         .run(tauri::generate_context!());

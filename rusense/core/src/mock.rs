@@ -3,7 +3,7 @@
 use std::cell::Cell;
 
 use crate::domain::{
-    Capabilities, FanMode, PowerSettings, Profile, ProfileSet, SenseError, Telemetry,
+    Capabilities, FanMode, KeyboardRgb, PowerSettings, Profile, ProfileSet, SenseError, Telemetry,
     UsbChargeLevel,
 };
 use crate::port::SensePort;
@@ -26,6 +26,7 @@ pub struct MockSense {
     power: PowerSettings,
     back_logo: bool,
     telemetry_calls: Cell<u32>,
+    keyboard_rgb: KeyboardRgb,
 }
 
 impl MockSense {
@@ -34,8 +35,10 @@ impl MockSense {
             caps: Capabilities {
                 fan_control: true,
                 power: true,
-                four_zone_kb: false,
+                four_zone_kb: true,
                 back_logo: true,
+                lcd_override: true,
+                boot_sound: true,
             },
             profiles: ProfileSet::parse(
                 "low-power quiet balanced balanced-performance",
@@ -47,9 +50,12 @@ impl MockSense {
                 limiter: true,
                 usb: UsbChargeLevel::new(30).expect("30 is a valid usb level"),
                 backlight_timeout: true,
+                lcd_override: true,
+                boot_sound: true,
             },
             back_logo: false,
             telemetry_calls: Cell::new(0),
+            keyboard_rgb: KeyboardRgb::default(),
         }
     }
 
@@ -122,6 +128,27 @@ impl SensePort for MockSense {
         self.back_logo = on;
         Ok(())
     }
+
+    fn keyboard_rgb(&self) -> Result<KeyboardRgb, SenseError> {
+        Ok(self.keyboard_rgb.clone())
+    }
+
+    fn set_keyboard_rgb(&mut self, rgb: &KeyboardRgb) -> Result<(), SenseError> {
+        self.keyboard_rgb = rgb.clone();
+        Ok(())
+    }
+
+    fn set_per_zone_rgb(
+        &mut self,
+        _z1: &str,
+        _z2: &str,
+        _z3: &str,
+        _z4: &str,
+        brightness: u8,
+    ) -> Result<(), SenseError> {
+        self.keyboard_rgb.brightness = brightness;
+        Ok(())
+    }
 }
 
 #[cfg(test)]
@@ -149,6 +176,8 @@ mod tests {
         assert!(power.limiter);
         assert_eq!(power.usb.get(), 30);
         assert!(power.backlight_timeout);
+        assert!(power.lcd_override);
+        assert!(power.boot_sound);
 
         let t = mock.telemetry().unwrap();
         assert_eq!(t.temps, [41.0, 35.0, 40.0]);
@@ -171,7 +200,7 @@ mod tests {
         let caps = mock.capabilities();
         assert!(caps.fan_control);
         assert!(caps.power);
-        assert!(!caps.four_zone_kb);
+        assert!(caps.four_zone_kb);
     }
 
     // --- profiles ---
@@ -225,6 +254,8 @@ mod tests {
             limiter: false,
             usb: UsbChargeLevel::new(10).unwrap(),
             backlight_timeout: false,
+            lcd_override: true,
+            boot_sound: true,
         };
         mock.set_power(settings.clone()).unwrap();
         assert_eq!(mock.power().unwrap(), settings);

@@ -1,123 +1,503 @@
 <!doctype html>
-<html lang="en">
+<html lang="en" class="theme-predator">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>RuSense</title>
+<title>PredatorSense Cockpit</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
-<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Rajdhani:wght@500;600;700&family=Saira:wght@400;500&family=Chivo+Mono:wght@400;600&display=swap">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Rajdhani:wght@500;600;700&family=Saira:wght@400;500;600&family=Chivo+Mono:wght@400;600&display=swap">
 <link rel="stylesheet" href="style.css">
 </head>
 <body>
 
 <div class="app">
+  <!-- Titlebar -->
   <div class="titlebar" data-tauri-drag-region>
     <div class="dots"><i id="dot-close" title="Close" style="cursor:pointer"></i><i></i><i></i></div>
-    <div class="brand" data-tauri-drag-region>Ru<em>Sense</em></div>
+    <div class="brand" data-tauri-drag-region>
+      <span class="brand-name">PREDATOR</span>
+      <span class="brand-divider">//</span>
+      <em class="brand-sub">SENSE</em>
+    </div>
     <div class="spacer" data-tauri-drag-region></div>
+    <button class="btn-theme-toggle" id="theme-toggle" title="Switch Theme (Predator / Nitro)">CYBER CYAN</button>
     <span class="chip"><span class="dot"></span><span id="st-driver">linuwu_sense loaded</span></span>
-    <span class="chip">Acer Predator</span>
+    <span class="chip" id="chip-model">PHN16S-71</span>
     <button class="win-close" id="win-close" title="Close" aria-label="Close">✕</button>
   </div>
+
+  <!-- Navigation Tabs (6 Dedicated Pages) -->
+  <nav class="cockpit-nav">
+    <button class="nav-tab active" data-page="dashboard" id="tab-dashboard">
+      <svg class="tab-svg" viewBox="0 0 24 24" width="16" height="16"><path fill="currentColor" d="M3 13h8V3H3v10zm0 8h8v-6H3v6zm10 0h8V11h-8v10zm0-18v6h8V3h-8z"/></svg>
+      <span>Dashboard</span>
+    </button>
+    <button class="nav-tab" data-page="lighting" id="tab-lighting">
+      <svg class="tab-svg" viewBox="0 0 24 24" width="16" height="16"><path fill="currentColor" d="M20 5H4c-1.1 0-1.99.9-1.99 2L2 17c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V7c0-1.1-.9-2-2-2zm-9 3h2v2h-2V8zm0 3h2v2h-2v-2zM8 8h2v2H8V8zm0 3h2v2H8v-2zm-1 2H5v-2h2v2zm0-3H5V8h2v2zm8 7H9v-2h6v2zm1-4h-2v-2h2v2zm0-3h-2V8h2v2zm3 3h-2v-2h2v2zm0-3h-2V8h2v2z"/></svg>
+      <span>Keyboard &amp; Pulsar</span>
+    </button>
+    <button class="nav-tab" data-page="fans" id="tab-fans">
+      <svg class="tab-svg" viewBox="0 0 24 24" width="16" height="16"><path fill="currentColor" d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm0 18c-4.41 0-8-3.59-8-8s3.59-8 8-8 8 3.59 8 8-3.59 8-8 8zm0-14c-3.31 0-6 2.69-6 6s2.69 6 6 6 6-2.69 6-6-2.69-6-6-6z"/></svg>
+      <span>Fan Control</span>
+    </button>
+    <button class="nav-tab" data-page="scenarios" id="tab-scenarios">
+      <svg class="tab-svg" viewBox="0 0 24 24" width="16" height="16"><path fill="currentColor" d="M19.48 12.35c-1.57-.56-2-1.9-2.02-1.93l-.44-1.32-.44 1.32c-.02.03-.45 1.37-2.02 1.93-1.57.56-2.91.13-2.94.12l-1.35-.45.45 1.35c.01.03.44 1.37 2 1.93 1.57.56 2 1.9 2.02 1.93l.44 1.32.44-1.32c.02-.03.45-1.37 2.02-1.93 1.57-.56 2.91-.13 2.94-.12l1.35.45-.45-1.35c-.01-.03-.44-1.37-2-1.93zM12 3L2 12h3v8h6v-6h2v6h6v-8h3L12 3z"/></svg>
+      <span>Scenarios</span>
+    </button>
+    <button class="nav-tab" data-page="monitoring" id="tab-monitoring">
+      <svg class="tab-svg" viewBox="0 0 24 24" width="16" height="16"><path fill="currentColor" d="M3.5 18.49l6-6.01 4 4L22 6.92l-1.41-1.41-7.09 7.97-4-4L2 16.99z"/></svg>
+      <span>Monitoring</span>
+    </button>
+    <button class="nav-tab" data-page="settings" id="tab-settings">
+      <svg class="tab-svg" viewBox="0 0 24 24" width="16" height="16"><path fill="currentColor" d="M19.14 12.94c.04-.3.06-.61.06-.94 0-.32-.02-.64-.07-.94l2.03-1.58c.18-.14.23-.41.12-.61l-1.92-3.32c-.12-.22-.37-.29-.59-.22l-2.39.96c-.5-.38-1.03-.7-1.62-.94l-.36-2.54c-.04-.24-.24-.41-.48-.41h-3.84c-.24 0-.43.17-.47.41l-.36 2.54c-.59.24-1.13.57-1.62.94l-2.39-.96c-.22-.08-.47 0-.59.22L2.74 8.87c-.12.21-.08.47.12.61l2.03 1.58c-.05.3-.09.63-.09.94s.02.64.07.94l-2.03 1.58c-.18.14-.23.41-.12.61l1.92 3.32c.12.22.37.29.59.22l2.39-.96c.5.38 1.03.7 1.62.94l.36 2.54c.05.24.24.41.48.41h3.84c.24 0 .44-.17.47-.41l.36-2.54c.59-.24 1.13-.56 1.62-.94l2.39.96c.22.08.47 0 .59-.22l1.92-3.32c.12-.22.07-.47-.12-.61l-2.01-1.58zM12 15.6c-1.98 0-3.6-1.62-3.6-3.6s1.62-3.6 3.6-3.6 3.6 1.62 3.6 3.6-1.62 3.6-3.6 3.6z"/></svg>
+      <span>Settings &amp; Power</span>
+    </button>
+  </nav>
 
   <div class="shell">
     <svg width="0" height="0" class="svg-defs">
       <defs>
         <linearGradient id="heat" x1="0" y1="0" x2="1" y2="1">
-          <stop offset="0" stop-color="#e8362d"/><stop offset="1" stop-color="#ff8a3d"/>
+          <stop offset="0" stop-color="var(--gauge-start, #00c8ec)"/>
+          <stop offset="1" stop-color="var(--gauge-end, #1eff96)"/>
         </linearGradient>
       </defs>
     </svg>
 
-    <div class="row gauges">
-      <div class="card">
-        <h2>Fan CPU</h2>
-        <div class="gauge-wrap">
-          <div class="gauge">
-            <svg viewBox="0 0 100 100">
-              <circle class="track" cx="50" cy="50" r="44" pathLength="100"/>
-              <circle class="value" id="arc-cpu" cx="50" cy="50" r="44" pathLength="100"/>
-            </svg>
-            <div class="center">
-              <span class="rpm" id="rpm-cpu">0</span>
-              <span class="unit">rpm</span>
+    <!-- ==================== PAGE 1: DASHBOARD ==================== -->
+    <div class="page-container active" id="page-dashboard">
+      <div class="row gauges">
+        <div class="card">
+          <h2>Fan CPU</h2>
+          <div class="gauge-wrap">
+            <div class="gauge">
+              <svg viewBox="0 0 100 100">
+                <circle class="track" cx="50" cy="50" r="44" pathLength="100"/>
+                <circle class="value" id="arc-cpu" cx="50" cy="50" r="44" pathLength="100"/>
+              </svg>
+              <div class="center">
+                <span class="rpm" id="rpm-cpu">0</span>
+                <span class="unit">rpm</span>
+              </div>
+            </div>
+            <div class="gauge-side">
+              <div class="temp"><b id="temp-cpu">—</b><span>CPU temp</span></div>
+              <div class="temp"><b id="temp-sys">—</b><span>system</span></div>
+              <div class="src">hwmon/acer/fan1_input · temp1</div>
             </div>
           </div>
-          <div class="gauge-side">
-            <div class="temp"><b id="temp-cpu">—</b><span>CPU temp</span></div>
-            <div class="temp"><b id="temp-sys">—</b><span>system</span></div>
-            <div class="src">hwmon/acer/fan1_input · temp1</div>
+        </div>
+
+        <div class="card">
+          <h2>Fan GPU</h2>
+          <div class="gauge-wrap">
+            <div class="gauge">
+              <svg viewBox="0 0 100 100">
+                <circle class="track" cx="50" cy="50" r="44" pathLength="100"/>
+                <circle class="value" id="arc-gpu" cx="50" cy="50" r="44" pathLength="100"/>
+              </svg>
+              <div class="center">
+                <span class="rpm" id="rpm-gpu">0</span>
+                <span class="unit">rpm</span>
+              </div>
+            </div>
+            <div class="gauge-side">
+              <div class="temp"><b id="temp-gpu">—</b><span>GPU temp</span></div>
+              <div class="temp"><b>RTX 5060</b><span>Laptop</span></div>
+              <div class="src">hwmon/acer/fan2_input · temp2</div>
+            </div>
           </div>
         </div>
       </div>
 
-      <div class="card">
-        <h2>Fan GPU</h2>
-        <div class="gauge-wrap">
-          <div class="gauge">
-            <svg viewBox="0 0 100 100">
-              <circle class="track" cx="50" cy="50" r="44" pathLength="100"/>
-              <circle class="value" id="arc-gpu" cx="50" cy="50" r="44" pathLength="100"/>
-            </svg>
-            <div class="center">
-              <span class="rpm" id="rpm-gpu">0</span>
-              <span class="unit">rpm</span>
-            </div>
-          </div>
-          <div class="gauge-side">
-            <div class="temp"><b id="temp-gpu">—</b><span>GPU temp</span></div>
-            <div class="temp"><b>—</b><span>vram</span></div>
-            <div class="src">hwmon/acer/fan2_input · temp2</div>
-          </div>
+      <div class="card profiles-strip">
+        <div class="card-head">
+          <h2>Thermal Mode</h2>
+          <span class="badge" id="gpu-boost-badge">GPU BOOST AUTO</span>
+        </div>
+        <div class="profiles" id="profiles">
+          <button class="profile" data-v="low-power" aria-pressed="false">Eco<small>power saving</small></button>
+          <button class="profile" data-v="quiet" aria-pressed="false">Quiet<small>minimum fans</small></button>
+          <button class="profile" data-v="balanced" aria-pressed="false">Balanced<small>daily use</small></button>
+          <button class="profile" data-v="balanced-performance" aria-pressed="false">Performance<small>gaming mode</small></button>
+          <button class="profile" data-v="performance" aria-pressed="false">Turbo<small>max cooling &amp; boost</small></button>
+        </div>
+      </div>
+
+      <!-- Quick Telemetry & Stats -->
+      <div class="row telemetry-grid">
+        <div class="card stat-card">
+          <span class="stat-label">BATTERY STATUS</span>
+          <div class="stat-value" id="dash-batt">—</div>
+          <span class="stat-sub" id="dash-batt-sub">80% Limit Armed</span>
+        </div>
+        <div class="card stat-card">
+          <span class="stat-label">GPU OVERCLOCK</span>
+          <div class="stat-value" id="dash-gpu-oc">STOCK</div>
+          <span class="stat-sub">Turbo Offsets Ready</span>
+        </div>
+        <div class="card stat-card">
+          <span class="stat-label">DISPLAY 3MS OVERDRIVE</span>
+          <div class="stat-value" id="dash-lcd">ACTIVE</div>
+          <span class="stat-sub">Fast Response Mode</span>
+        </div>
+        <div class="card stat-card">
+          <span class="stat-label">PULSAR RGB</span>
+          <div class="stat-value" id="dash-rgb">STATIC</div>
+          <span class="stat-sub">Zone 1-4 Backlit</span>
         </div>
       </div>
     </div>
 
-    <div class="card profiles-strip">
-      <h2>Thermal Profile</h2>
-      <div class="profiles" id="profiles">
-        <button class="profile" data-v="low-power" aria-pressed="false">Eco<small>power saving</small></button>
-        <button class="profile" data-v="quiet" aria-pressed="false">Quiet<small>minimum fans</small></button>
-        <button class="profile" data-v="balanced" aria-pressed="false">Balanced<small>daily use</small></button>
-        <button class="profile" data-v="balanced-performance" aria-pressed="false">Performance<small>gaming mode</small></button>
-        <button class="profile" data-v="performance" aria-pressed="false">Turbo<small>max cooling &amp; power</small></button>
-      </div>
-    </div>
+    <!-- ==================== PAGE 2: KEYBOARD & PULSAR LIGHTING ==================== -->
+    <div class="page-container" id="page-lighting">
+      <div class="card">
+        <div class="card-head">
+          <h2>4-Zone Interactive Keyboard Studio</h2>
+          <span class="badge badge-accent" id="rgb-mode-label">STATIC</span>
+        </div>
+        <p class="section-desc">Hardware-accelerated 4-zone RGB backlight controlled directly via ACPI WMI method 20 &amp; method 6. Select a zone below or click directly on the visual keyboard layout to customize individual zone colors.</p>
+        
+        <!-- Zone Selector Bar -->
+        <div class="zone-selector-bar">
+          <button class="zone-pill active" data-zone="all" id="btn-zone-all">ALL 4 ZONES</button>
+          <button class="zone-pill" data-zone="1" id="btn-zone-1">ZONE 1 (WASD)</button>
+          <button class="zone-pill" data-zone="2" id="btn-zone-2">ZONE 2 (CENTER)</button>
+          <button class="zone-pill" data-zone="3" id="btn-zone-3">ZONE 3 (ARROWS)</button>
+          <button class="zone-pill" data-zone="4" id="btn-zone-4">ZONE 4 (NUMPAD)</button>
+          <div class="zone-active-pill" id="zone-target-text">EDITING: ALL ZONES</div>
+        </div>
 
-    <div class="row controls">
-      <div class="card" id="card-fans">
-        <h2>Fan Control</h2>
-        <div class="modes" id="modes">
-          <button class="mode active" data-v="auto" aria-pressed="true">Auto</button>
-          <button class="mode" data-v="max" aria-pressed="false">Max</button>
-          <button class="mode" data-v="custom" aria-pressed="false">Custom</button>
+        <!-- Interactive Visual Keyboard Diagram -->
+        <div class="keyboard-visualizer">
+          <div class="kb-zone kb-zone-1 active-selection" id="zone-1" data-zone="1" title="Click to edit Zone 1 (WASD)">
+            <div class="kb-zone-header">ZONE 1 (WASD / GAMING)</div>
+            <div class="kb-key-cluster">
+              <span class="kb-key kb-key-sm">ESC</span>
+              <span class="kb-key">Q</span><span class="kb-key active-key">W</span><span class="kb-key">E</span><span class="kb-key">R</span>
+              <span class="kb-key active-key">A</span><span class="kb-key active-key">S</span><span class="kb-key active-key">D</span>
+            </div>
+            <div class="zone-color-indicator" id="ind-zone-1">#00c8ec</div>
+          </div>
+          <div class="kb-zone kb-zone-2" id="zone-2" data-zone="2" title="Click to edit Zone 2 (Center)">
+            <div class="kb-zone-header">ZONE 2 (CENTER TYPING)</div>
+            <div class="kb-key-cluster">
+              <span class="kb-key">T</span><span class="kb-key">Y</span><span class="kb-key">U</span><span class="kb-key">I</span><span class="kb-key">O</span>
+              <span class="kb-key">G</span><span class="kb-key">H</span><span class="kb-key">J</span><span class="kb-key">K</span><span class="kb-key">L</span>
+              <span class="kb-key">B</span><span class="kb-key">N</span><span class="kb-key">M</span>
+            </div>
+            <div class="zone-color-indicator" id="ind-zone-2">#00c8ec</div>
+          </div>
+          <div class="kb-zone kb-zone-3" id="zone-3" data-zone="3" title="Click to edit Zone 3 (Arrows)">
+            <div class="kb-zone-header">ZONE 3 (MODIFIERS / ARROWS)</div>
+            <div class="kb-key-cluster">
+              <span class="kb-key kb-key-lg">ENTER</span>
+              <span class="kb-key kb-key-md">SHIFT</span>
+              <span class="kb-key kb-arrow">▲</span>
+              <span class="kb-key kb-arrow">◀</span><span class="kb-key kb-arrow">▼</span><span class="kb-key kb-arrow">▶</span>
+            </div>
+            <div class="zone-color-indicator" id="ind-zone-3">#00c8ec</div>
+          </div>
+          <div class="kb-zone kb-zone-4" id="zone-4" data-zone="4" title="Click to edit Zone 4 (Numpad)">
+            <div class="kb-zone-header">ZONE 4 (NUMPAD)</div>
+            <div class="kb-key-cluster">
+              <span class="kb-key">7</span><span class="kb-key">8</span><span class="kb-key">9</span>
+              <span class="kb-key">4</span><span class="kb-key">5</span><span class="kb-key">6</span>
+              <span class="kb-key">1</span><span class="kb-key">2</span><span class="kb-key">3</span>
+              <span class="kb-key kb-key-lg">0</span>
+            </div>
+            <div class="zone-color-indicator" id="ind-zone-4">#00c8ec</div>
+          </div>
         </div>
+
+        <!-- Color Studio & Swatches -->
+        <div class="color-studio-block">
+          <div class="color-studio-row">
+            <div>
+              <h3 class="subhead">OEM COLOR PALETTE</h3>
+              <div class="swatches" id="rgb-swatches">
+                <button class="swatch active" data-color="#00c8ec" style="--c:#00c8ec" title="Predator Cyan"></button>
+                <button class="swatch" data-color="#1eff96" style="--c:#1eff96" title="Eco Green"></button>
+                <button class="swatch" data-color="#e8362d" style="--c:#e8362d" title="Magma Red"></button>
+                <button class="swatch" data-color="#0064ff" style="--c:#0064ff" title="Deep Blue"></button>
+                <button class="swatch" data-color="#ff3399" style="--c:#ff3399" title="Extreme Pink"></button>
+                <button class="swatch" data-color="#ffcc00" style="--c:#ffcc00" title="Solar Amber"></button>
+                <button class="swatch" data-color="#ffffff" style="--c:#ffffff" title="Arctic White"></button>
+              </div>
+            </div>
+
+            <!-- Custom Color Picker -->
+            <div class="custom-color-control">
+              <h3 class="subhead">CUSTOM RGB PICKER</h3>
+              <div class="custom-picker-wrap">
+                <input type="color" id="picker-color" value="#00c8ec" title="Select custom color">
+                <input type="text" id="picker-hex" value="#00C8EC" maxlength="7" spellcheck="false" class="picker-hex-input">
+                <button class="btn-preset" id="btn-apply-custom">Apply Color</button>
+              </div>
+            </div>
+          </div>
+
+          <!-- Quick Theme Presets -->
+          <div class="themes-strip">
+            <span class="quick-title">4-ZONE COLOR THEMES:</span>
+            <button class="btn-theme-preset" data-theme="cyberpunk">Cyberpunk Neon</button>
+            <button class="btn-theme-preset" data-theme="ice">Predator Ice</button>
+            <button class="btn-theme-preset" data-theme="magma">Magma Inferno</button>
+            <button class="btn-theme-preset" data-theme="matrix">Matrix Code</button>
+          </div>
+        </div>
+
+        <!-- Lighting Mode Pills -->
+        <h3 class="subhead">HARDWARE LIGHTING EFFECTS</h3>
+        <div class="modes" id="rgb-modes">
+          <button class="mode-btn active" data-mode="0">Static</button>
+          <button class="mode-btn" data-mode="1">Breathing</button>
+          <button class="mode-btn" data-mode="2">Neon</button>
+          <button class="mode-btn" data-mode="3">Wave</button>
+          <button class="mode-btn" data-mode="4">Shifting</button>
+          <button class="mode-btn" data-mode="5">Zoom</button>
+          <button class="mode-btn" data-mode="6">Meteor</button>
+          <button class="mode-btn" data-mode="7">Twinkle</button>
+        </div>
+
+        <!-- Tuning Sliders -->
         <div class="slider-row">
-          <label for="s-cpu">CPU</label>
-          <input type="range" id="s-cpu" min="0" max="100" step="10" value="50" disabled>
-          <output id="o-cpu">50%</output>
+          <label for="rgb-bright">Brightness</label>
+          <input type="range" id="rgb-bright" min="0" max="100" step="10" value="100">
+          <output id="o-rgb-bright">100%</output>
         </div>
-        <div class="slider-row">
-          <label for="s-gpu">GPU</label>
-          <input type="range" id="s-gpu" min="0" max="100" step="10" value="50" disabled>
-          <output id="o-gpu">50%</output>
+
+        <div class="slider-row" id="rgb-speed-row">
+          <label for="rgb-speed">Effect Speed</label>
+          <input type="range" id="rgb-speed" min="1" max="9" step="1" value="5">
+          <output id="o-rgb-speed">5</output>
         </div>
-        <div class="src">nitro_sense/fan_speed · format "cpu,gpu" · 0,0 = auto</div>
+
+        <div class="slider-row" id="rgb-direction-row">
+          <label>Wave Direction</label>
+          <div class="segs" id="rgb-direction-segs">
+            <button class="seg active" data-dir="0">Left to Right ➔</button>
+            <button class="seg" data-dir="1">Right to Left ⬅</button>
+          </div>
+        </div>
       </div>
 
-      <div class="card" id="card-energy">
-        <h2>Power &amp; Battery</h2>
+      <!-- Additional Exterior Lighting Card -->
+      <div class="card" id="card-exterior-lighting">
+        <h2>Exterior &amp; Logo Lighting</h2>
+        <div class="setting" id="setting-logo">
+          <div class="info">
+            <div class="name">Rear Lid Predator Logo</div>
+            <div class="desc">Lid emblem LED backlight (with in-kernel AC delayed work persistence)</div>
+          </div>
+          <div class="logo-controls">
+            <input type="color" id="picker-logo" value="#00c8ec" title="Lid Logo Color">
+            <button class="toggle" id="t-logo" aria-label="Rear Logo Lighting" aria-pressed="false"></button>
+          </div>
+        </div>
         <div class="setting">
           <div class="info">
-            <div class="name">80% Battery Limit</div>
-            <div class="desc">Preserves battery health</div>
+            <div class="name">Keyboard Backlight Auto-Sleep</div>
+            <div class="desc">Turns off keyboard lighting after 30 seconds of idle on battery to conserve power</div>
+          </div>
+          <button class="toggle" id="t-backlight" aria-label="Keyboard Backlight Timeout" aria-pressed="false"></button>
+        </div>
+      </div>
+    </div>
+
+    <!-- ==================== PAGE 3: FAN CONTROL ==================== -->
+    <div class="page-container" id="page-fans">
+      <div class="card" id="card-fans-dedicated">
+        <div class="card-head">
+          <h2>Precision Aeroblade™ 3D Fan Control</h2>
+          <span class="badge" id="fan-mode-badge">AUTO</span>
+        </div>
+        <p class="section-desc">Manage the dual Aeroblade 3D fan curves. Auto respects EC acoustics, Max locks 100% (~6000 RPM), and Custom allows independent CPU/GPU duty cycle control.</p>
+        
+        <div class="modes" id="modes">
+          <button class="mode active" data-v="auto" aria-pressed="true">Auto Mode</button>
+          <button class="mode" data-v="max" aria-pressed="false">Max Speed (100%)</button>
+          <button class="mode" data-v="custom" aria-pressed="false">Custom Sliders</button>
+        </div>
+
+        <div class="fan-sliders-block">
+          <div class="slider-group">
+            <div class="slider-header">
+              <span class="slider-title">CPU FAN SPEED</span>
+              <span class="slider-val" id="o-cpu">50%</span>
+            </div>
+            <input type="range" id="s-cpu" min="0" max="100" step="5" value="50" disabled>
+            <div class="slider-ticks">
+              <span>0% (Quiet)</span>
+              <span>50%</span>
+              <span>100% (Max)</span>
+            </div>
+          </div>
+
+          <div class="slider-group">
+            <div class="slider-header">
+              <span class="slider-title">GPU FAN SPEED</span>
+              <span class="slider-val" id="o-gpu">50%</span>
+            </div>
+            <input type="range" id="s-gpu" min="0" max="100" step="5" value="50" disabled>
+            <div class="slider-ticks">
+              <span>0% (Quiet)</span>
+              <span>50%</span>
+              <span>100% (Max)</span>
+            </div>
+          </div>
+        </div>
+
+        <div class="quick-presets">
+          <span class="quick-title">QUICK PRESETS:</span>
+          <button class="btn-preset" data-cpu="30" data-gpu="30">Silent (30%)</button>
+          <button class="btn-preset" data-cpu="50" data-gpu="50">Balanced (50%)</button>
+          <button class="btn-preset" data-cpu="70" data-gpu="70">Gaming (70%)</button>
+          <button class="btn-preset" data-cpu="85" data-gpu="85">Heavy Load (85%)</button>
+          <button class="btn-preset" data-cpu="100" data-gpu="100">Full Throttle (100%)</button>
+        </div>
+
+        <div class="src">predator_sense/fan_speed · format "cpu,gpu" · 0,0 = auto</div>
+      </div>
+    </div>
+
+    <!-- ==================== PAGE 4: SCENARIOS ==================== -->
+    <div class="page-container" id="page-scenarios">
+      <div class="card">
+        <div class="card-head">
+          <h2>Scenario &amp; Operating Modes</h2>
+          <span class="badge badge-accent" id="active-scenario-badge">BALANCED</span>
+        </div>
+        <p class="section-desc">Hardware thermal scenarios configure system TDP envelope, PL1/PL2 thresholds, fan acoustic ramp-up rates, and GPU dynamic boost.</p>
+
+        <div class="scenario-cards-grid">
+          <div class="scenario-card" data-mode="low-power">
+            <div class="scenario-head">
+              <h3>Eco Mode</h3>
+              <span class="scenario-tag">Battery Saving</span>
+            </div>
+            <p>Caps CPU TDP, lowers display refresh rate on battery, and maintains minimal fan speeds for maximum mobile endurance.</p>
+            <div class="scenario-meta"><span>Fan Acoustic:</span><b>&lt; 25 dBA</b></div>
+            <div class="scenario-meta"><span>GPU Boost:</span><b>Stock</b></div>
+            <button class="btn-scenario-activate" data-mode="low-power">Activate Eco</button>
+          </div>
+
+          <div class="scenario-card" data-mode="quiet">
+            <div class="scenario-head">
+              <h3>Quiet Mode</h3>
+              <span class="scenario-tag">Acoustic Focused</span>
+            </div>
+            <p>Maintains whisper-quiet fan speeds. Ideal for classrooms, meetings, libraries, and late-night productivity work.</p>
+            <div class="scenario-meta"><span>Fan Acoustic:</span><b>&lt; 30 dBA</b></div>
+            <div class="scenario-meta"><span>GPU Boost:</span><b>Stock</b></div>
+            <button class="btn-scenario-activate" data-mode="quiet">Activate Quiet</button>
+          </div>
+
+          <div class="scenario-card active" data-mode="balanced">
+            <div class="scenario-head">
+              <h3>Balanced Mode</h3>
+              <span class="scenario-tag">OEM Standard</span>
+            </div>
+            <p>Dynamic platform tuning. Balances thermal headroom, acoustics, and single/multi-thread responsiveness for daily use.</p>
+            <div class="scenario-meta"><span>Fan Acoustic:</span><b>Dynamic</b></div>
+            <div class="scenario-meta"><span>GPU Boost:</span><b>Standard Dynamic</b></div>
+            <button class="btn-scenario-activate" data-mode="balanced">Active</button>
+          </div>
+
+          <div class="scenario-card" data-mode="balanced-performance">
+            <div class="scenario-head">
+              <h3>Performance</h3>
+              <span class="scenario-tag">Gaming Tuning</span>
+            </div>
+            <p>Elevates power limits and fan curves to ensure sustained high framerates in demanding AAA titles without thermal throttling.</p>
+            <div class="scenario-meta"><span>Fan Acoustic:</span><b>Aggressive</b></div>
+            <div class="scenario-meta"><span>GPU Boost:</span><b>Dynamic Max</b></div>
+            <button class="btn-scenario-activate" data-mode="balanced-performance">Activate Performance</button>
+          </div>
+
+          <div class="scenario-card" data-mode="performance">
+            <div class="scenario-head">
+              <h3>Turbo Mode</h3>
+              <span class="scenario-tag highlight-tag">Max Overclock</span>
+            </div>
+            <p>Unlocks maximum cooling fan duty and automatically applies OEM GPU Overclock offsets (+100 MHz GPU Core, +200 MHz VRAM).</p>
+            <div class="scenario-meta"><span>Fan Duty:</span><b>100% (~6000 RPM)</b></div>
+            <div class="scenario-meta"><span>GPU Clock Offset:</span><b style="color:var(--accent-green)">+100 / +200 MHz</b></div>
+            <button class="btn-scenario-activate" data-mode="performance">Activate Turbo</button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ==================== PAGE 5: MONITORING & TELEMETRY ==================== -->
+    <div class="page-container" id="page-monitoring">
+      <div class="card">
+        <div class="card-head">
+          <h2>Real-Time Hardware Telemetry</h2>
+          <span class="badge" id="mon-health-badge">ALL SYSTEMS NORMAL</span>
+        </div>
+        <p class="section-desc">Live thermal sensors, Aeroblade 3D tachometers, and power delivery statistics polled directly from the embedded controller.</p>
+
+        <div class="mon-grid">
+          <div class="mon-card">
+            <div class="mon-label">CPU TEMPERATURE</div>
+            <div class="mon-val" id="mon-cpu-temp">—°C</div>
+            <div class="mon-bar-wrap"><div class="mon-bar" id="mon-bar-cpu" style="width: 45%"></div></div>
+            <div class="mon-sub">Intel Core Ultra</div>
+          </div>
+
+          <div class="mon-card">
+            <div class="mon-label">GPU TEMPERATURE</div>
+            <div class="mon-val" id="mon-gpu-temp">—°C</div>
+            <div class="mon-bar-wrap"><div class="mon-bar" id="mon-bar-gpu" style="width: 40%"></div></div>
+            <div class="mon-sub">NVIDIA RTX 5060 Laptop</div>
+          </div>
+
+          <div class="mon-card">
+            <div class="mon-label">SYSTEM AMBIENT</div>
+            <div class="mon-val" id="mon-sys-temp">—°C</div>
+            <div class="mon-bar-wrap"><div class="mon-bar" id="mon-bar-sys" style="width: 35%"></div></div>
+            <div class="mon-sub">Motherboard VRM &amp; NVMe</div>
+          </div>
+
+          <div class="mon-card">
+            <div class="mon-label">BATTERY CHARGE</div>
+            <div class="mon-val" id="mon-batt-pct">—%</div>
+            <div class="mon-bar-wrap"><div class="mon-bar" id="mon-bar-batt" style="width: 80%"></div></div>
+            <div class="mon-sub" id="mon-batt-status">Charging Status</div>
+          </div>
+        </div>
+      </div>
+
+      <div class="card">
+        <h2>Hardware Diagnostics &amp; Specifications</h2>
+        <div class="info-table">
+          <div class="info-row"><span>Target Machine</span><b>Acer Predator Helios Neo 16S (PHN16S-71)</b></div>
+          <div class="info-row"><span>Processor</span><b>Intel Core Ultra Mobile Processor</b></div>
+          <div class="info-row"><span>Discrete GPU</span><b>NVIDIA GeForce RTX 5060 Laptop (8GB GDDR6)</b></div>
+          <div class="info-row"><span>Thermal Architecture</span><b>5th Gen Aeroblade™ 3D Dual Liquid Metal Fans</b></div>
+          <div class="info-row"><span>Kernel Driver Bridge</span><b>linuwu_sense (WMI GUID4 / GUID5 / ACPI 1025165F)</b></div>
+          <div class="info-row"><span>Sysfs Device Base</span><b>/sys/devices/platform/acer-wmi/</b></div>
+          <div class="info-row"><span>RuSense Memory Footprint</span><b>&lt; 15 MB RAM (Zero-polling event-driven)</b></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ==================== PAGE 6: SETTINGS & POWER ==================== -->
+    <div class="page-container" id="page-settings">
+      <div class="card">
+        <h2>Power &amp; Battery Care</h2>
+        <div class="setting">
+          <div class="info">
+            <div class="name">80% Battery Charge Limit</div>
+            <div class="desc">Caps charging threshold at 80% to prevent degradation when continuously connected to AC</div>
           </div>
           <button class="toggle" id="t-limiter" aria-label="80% Battery Limit" aria-pressed="false"></button>
         </div>
         <div class="setting">
           <div class="info">
-            <div class="name">USB Charging</div>
-            <div class="desc">Charge devices when powered off</div>
+            <div class="name">USB Power-Off Charging</div>
+            <div class="desc">Keeps powered USB port active to charge phones/tablets while the laptop is sleeping or powered down</div>
           </div>
           <div class="segs" id="usb-segs">
             <button class="seg" data-v="0" aria-pressed="false">off</button>
@@ -126,24 +506,67 @@
             <button class="seg" data-v="30" aria-pressed="false">30%</button>
           </div>
         </div>
-        <div class="setting">
+        <div class="setting" id="setting-auto-refresh">
           <div class="info">
-            <div class="name">Keyboard Backlight Timeout</div>
-            <div class="desc">Turns off backlight after 30s idle</div>
+            <div class="name">Dynamic Display Refresh Rate (240Hz / 60Hz)</div>
+            <div class="desc">Automatically drops internal eDP display to 60Hz on battery to save 3–4W, and restores 240Hz on AC</div>
           </div>
-          <button class="toggle" id="t-backlight" aria-label="Keyboard Backlight Timeout" aria-pressed="false"></button>
+          <button class="toggle on" id="t-autorefresh" aria-label="Dynamic Display Refresh" aria-pressed="true"></button>
         </div>
-        <div class="setting" id="setting-logo">
+        <div class="setting" id="setting-epp">
           <div class="info">
-            <div class="name">Rear Logo Lighting</div>
-            <div class="desc">Lid logo LED backlight</div>
+            <div class="name">Intel Core Ultra Dynamic EPP &amp; RAPL</div>
+            <div class="desc">Dynamically switches CPU Energy Performance Preference (balance_power on battery, performance on AC)</div>
           </div>
-          <button class="toggle" id="t-logo" aria-label="Rear Logo Lighting" aria-pressed="false"></button>
+          <button class="toggle on" id="t-epp" aria-label="Dynamic EPP Tuning" aria-pressed="true"></button>
+        </div>
+        <div class="setting" id="setting-dgpu-rtd3">
+          <div class="info">
+            <div class="name">NVIDIA RTX 5060 Deep Sleep (RTD3)</div>
+            <div class="desc">Puts discrete GPU into zero-watt PCI runtime power suspend (D3cold) when idle on battery</div>
+          </div>
+          <button class="toggle on" id="t-dgpu-rtd3" aria-label="dGPU RTD3 Power Management" aria-pressed="true"></button>
+        </div>
+      </div>
+
+      <div class="card">
+        <h2>Display &amp; Hardware Enhancements</h2>
+        <div class="setting" id="setting-lcd">
+          <div class="info">
+            <div class="name">LCD 3ms Response Time Overdrive</div>
+            <div class="desc">Activates panel voltage boost to reduce motion blur and pixel response latency in fast-paced games</div>
+          </div>
+          <button class="toggle" id="t-lcd" aria-label="LCD Overdrive" aria-pressed="false"></button>
+        </div>
+        <div class="setting" id="setting-bootsound">
+          <div class="info">
+            <div class="name">Predator Startup Boot Chime</div>
+            <div class="desc">Plays the signature Predator startup animation and audio chime on system power-on</div>
+          </div>
+          <button class="toggle" id="t-bootsound" aria-label="Predator Boot Sound" aria-pressed="false"></button>
+        </div>
+        <div class="setting" id="setting-winkey">
+          <div class="info">
+            <div class="name">Windows Key Lock (Gaming Mode)</div>
+            <div class="desc">Disables Windows key during gaming sessions to prevent accidental desktop minimizes</div>
+          </div>
+          <button class="toggle" id="t-winkey" aria-label="Windows Key Lock" aria-pressed="false"></button>
+        </div>
+      </div>
+
+      <div class="card">
+        <h2>Driver Management &amp; Diagnostics</h2>
+        <p class="section-desc">Manage kernel driver bridge connection and persistent state configuration.</p>
+        <div class="quick-presets">
+          <button class="btn-preset" id="btn-reprobe-driver">Refresh Driver Status</button>
+          <button class="btn-preset" id="btn-reset-defaults">Restore OEM Defaults</button>
         </div>
       </div>
     </div>
+
   </div>
 
+  <!-- Persistent Status Bar -->
   <div class="statusbar">
     <span>/sys/devices/platform/acer-wmi</span>
     <span class="sep">|</span>
@@ -153,12 +576,12 @@
     <span class="sep">|</span>
     <span>battery: <span id="st-batt">—</span></span>
     <span class="sep">|</span>
-    <span id="st-rgb">4-zone RGB: unavailable on this model</span>
+    <span id="st-rgb">4-zone RGB: online</span>
     <span class="badge" id="st-mock" hidden>mock</span>
   </div>
 </div>
 
-<div id="toast" aria-live="polite"><span class="p">rusense →</span> <span id="toast-msg"></span></div>
+<div id="toast" aria-live="polite"><span class="p">predator →</span> <span id="toast-msg"></span></div>
 
 <script src="app.js" defer></script>
 </body>

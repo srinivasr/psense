@@ -9,9 +9,10 @@
 //! [`MockSense`]: rusense_core::MockSense
 
 use rusense_core::{
-    Capabilities, FanDuty, FanMode, PowerSettings, SenseError, SensePort, Telemetry, UsbChargeLevel,
+    Capabilities, FanDuty, FanMode, KeyboardRgb, PowerSettings, SenseError, SensePort, Telemetry,
+    UsbChargeLevel,
 };
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 
 /// Everything the frontend needs to paint one frame of the cockpit.
 #[derive(Debug, Clone, Serialize)]
@@ -20,6 +21,7 @@ pub struct UiState {
     pub profiles: ProfilesDto,
     pub fan: FanDto,
     pub power: PowerDto,
+    pub keyboard_rgb: KeyboardRgbDto,
     pub caps: CapsDto,
     /// True when running against the mock backend (`--mock` / `RUSENSE_MOCK=1`).
     pub mock: bool,
@@ -59,6 +61,34 @@ pub struct PowerDto {
     pub usb: u8,
     pub backlight: bool,
     pub logo: bool,
+    pub lcd_override: bool,
+    pub boot_sound: bool,
+}
+
+/// 4-zone RGB keyboard configuration.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct KeyboardRgbDto {
+    pub mode: u8,
+    pub speed: u8,
+    pub brightness: u8,
+    pub direction: u8,
+    pub red: u8,
+    pub green: u8,
+    pub blue: u8,
+}
+
+impl From<KeyboardRgb> for KeyboardRgbDto {
+    fn from(k: KeyboardRgb) -> Self {
+        Self {
+            mode: k.mode,
+            speed: k.speed,
+            brightness: k.brightness,
+            direction: k.direction,
+            red: k.red,
+            green: k.green,
+            blue: k.blue,
+        }
+    }
 }
 
 /// Feature groups the backend supports; the frontend hides absent cards.
@@ -68,6 +98,8 @@ pub struct CapsDto {
     pub power: bool,
     pub four_zone_kb: bool,
     pub back_logo: bool,
+    pub lcd_override: bool,
+    pub boot_sound: bool,
 }
 
 fn err_str(e: SenseError) -> String {
@@ -115,6 +147,8 @@ impl From<PowerSettings> for PowerDto {
             usb: p.usb.get(),
             backlight: p.backlight_timeout,
             logo: false,
+            lcd_override: p.lcd_override,
+            boot_sound: p.boot_sound,
         }
     }
 }
@@ -126,6 +160,8 @@ impl From<Capabilities> for CapsDto {
             power: c.power,
             four_zone_kb: c.four_zone_kb,
             back_logo: c.back_logo,
+            lcd_override: c.lcd_override,
+            boot_sound: c.boot_sound,
         }
     }
 }
@@ -156,9 +192,16 @@ pub fn read_state(port: &dyn SensePort, mock: bool) -> Result<UiState, String> {
             usb: 0,
             backlight: false,
             logo: false,
+            lcd_override: false,
+            boot_sound: false,
         }
     };
     power.logo = logo;
+    let keyboard_rgb = if caps.four_zone_kb {
+        port.keyboard_rgb().unwrap_or_default().into()
+    } else {
+        KeyboardRgb::default().into()
+    };
     Ok(UiState {
         telemetry,
         profiles: ProfilesDto {
@@ -171,9 +214,45 @@ pub fn read_state(port: &dyn SensePort, mock: bool) -> Result<UiState, String> {
         },
         fan,
         power,
+        keyboard_rgb,
         caps: caps.into(),
         mock,
     })
+}
+
+/// Apply 4-zone keyboard RGB configuration.
+pub fn apply_keyboard_rgb(
+    port: &mut dyn SensePort,
+    mode: u8,
+    speed: u8,
+    brightness: u8,
+    direction: u8,
+    red: u8,
+    green: u8,
+    blue: u8,
+) -> Result<(), String> {
+    let rgb = KeyboardRgb {
+        mode,
+        speed,
+        brightness,
+        direction,
+        red,
+        green,
+        blue,
+    };
+    port.set_keyboard_rgb(&rgb).map_err(err_str)
+}
+
+/// Apply per-zone keyboard RGB colors (hex formatted zones 1-4).
+pub fn apply_per_zone_rgb(
+    port: &mut dyn SensePort,
+    z1: &str,
+    z2: &str,
+    z3: &str,
+    z4: &str,
+    brightness: u8,
+) -> Result<(), String> {
+    port.set_per_zone_rgb(z1, z2, z3, z4, brightness).map_err(err_str)
 }
 
 /// Resolve `name` against the port's available profiles and activate it.
@@ -185,7 +264,25 @@ pub fn apply_profile(port: &mut dyn SensePort, name: &str) -> Result<(), String>
         .into_iter()
         .find(|p| p.as_str() == name)
         .ok_or_else(|| err_str(SenseError::UnknownProfile(name.to_string())))?;
-    port.set_profile(&profile).map_err(err_str)
+    port.set_profile(&profile).map_err(err_str)?;
+
+    // OEM PredatorSense GPU Boost parity:
+    // If Turbo ("performance") is selected, boost GPU (+100MHz Core, +200MHz VRAM); otherwise reset to 0.
+    apply_gpu_turbo_boost(name == "performance");
+
+    Ok(())
+}
+
+fn apply_gpu_turbo_boost(enable: bool) {
+    let (core, mem) = if enable { (100, 200) } else { (0, 0) };
+    let _ = std::process::Command::new("nvidia-settings")
+        .args([
+            "-a",
+            &format!("[gpu:0]/GPUGraphicsClockOffsetAllPerformanceLevels={core}"),
+            "-a",
+            &format!("[gpu:0]/GPUMemoryTransferRateOffsetAllPerformanceLevels={mem}"),
+        ])
+        .output();
 }
 
 /// Apply a fan mode from its frontend encoding (`"auto"`/`"max"`/`"custom"`).
@@ -211,12 +308,16 @@ pub fn apply_power(
     limiter: bool,
     usb: u8,
     backlight: bool,
+    lcd_override: bool,
+    boot_sound: bool,
 ) -> Result<(), String> {
     let usb = UsbChargeLevel::new(usb).map_err(err_str)?;
     port.set_power(PowerSettings {
         limiter,
         usb,
         backlight_timeout: backlight,
+        lcd_override,
+        boot_sound,
     })
     .map_err(err_str)
 }
@@ -241,6 +342,16 @@ mod tests {
         assert!(!read_state(&mock, true).unwrap().power.logo);
     }
 
+    #[test]
+    fn apply_keyboard_rgb_updates_state() {
+        let mut mock = MockSense::new();
+        apply_keyboard_rgb(&mut mock, 3, 5, 80, 1, 255, 0, 128).unwrap();
+        let k = mock.keyboard_rgb().unwrap();
+        assert_eq!(k.mode, 3);
+        assert_eq!(k.brightness, 80);
+        assert_eq!(k.red, 255);
+    }
+
     // --- read_state / DTO mapping ---
 
     #[test]
@@ -263,7 +374,7 @@ mod tests {
 
         assert!(s.caps.fan_control);
         assert!(s.caps.power);
-        assert!(!s.caps.four_zone_kb);
+        assert!(s.caps.four_zone_kb);
 
         assert_eq!(s.telemetry.temps, [41.0, 35.0, 40.0]);
         assert_eq!(s.telemetry.battery_pct, 80);
@@ -286,7 +397,7 @@ mod tests {
         assert_eq!(v["profiles"]["active"], "balanced-performance");
         assert_eq!(v["fan"]["mode"], "auto");
         assert_eq!(v["power"]["usb"], 30);
-        assert_eq!(v["caps"]["four_zone_kb"], false);
+        assert_eq!(v["caps"]["four_zone_kb"], true);
         assert_eq!(v["telemetry"]["battery_pct"], 80);
         assert_eq!(v["mock"], true);
     }
@@ -364,17 +475,19 @@ mod tests {
     #[test]
     fn apply_power_toggles_limiter() {
         let mut mock = MockSense::new();
-        apply_power(&mut mock, false, 30, true).unwrap();
+        apply_power(&mut mock, false, 30, true, false, false).unwrap();
         let s = read_state(&mock, true).unwrap();
         assert!(!s.power.limiter);
         assert_eq!(s.power.usb, 30);
         assert!(s.power.backlight);
+        assert!(!s.power.lcd_override);
+        assert!(!s.power.boot_sound);
     }
 
     #[test]
     fn apply_power_rejects_invalid_usb_level() {
         let mut mock = MockSense::new();
-        let err = apply_power(&mut mock, true, 15, true).unwrap_err();
+        let err = apply_power(&mut mock, true, 15, true, false, false).unwrap_err();
         assert_eq!(err, "invalid usb level (0/10/20/30): 15");
         // Nothing applied: the level is validated before touching the port.
         assert!(read_state(&mock, true).unwrap().power.limiter);

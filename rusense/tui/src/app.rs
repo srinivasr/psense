@@ -44,6 +44,8 @@ pub struct App {
     /// True when running against the mock backend (`--mock`); the
     /// header shows "mock" instead of "driver ok".
     pub mock: bool,
+    /// True when running on an Acer Predator laptop, false for Nitro.
+    pub is_predator: bool,
 }
 
 impl App {
@@ -53,6 +55,7 @@ impl App {
     /// Load errors land in `last_error`; fields stay `None`/default.
     pub fn new(port: Box<dyn SensePort + Send>, mock: bool) -> Self {
         let caps = port.capabilities();
+        let is_predator = port.is_predator();
         let mut app = Self {
             port,
             history: History::new(HISTORY_CAPACITY),
@@ -66,6 +69,7 @@ impl App {
             focus_gpu: false,
             last_error: None,
             mock,
+            is_predator,
         };
         app.refresh_controls();
         app
@@ -131,6 +135,13 @@ impl App {
                 self.update_power(|s| s.backlight_timeout = !s.backlight_timeout);
             }
             KeyCode::Char('l') if self.caps.back_logo => self.toggle_back_logo(),
+            KeyCode::Char('o') if self.caps.lcd_override => {
+                self.update_power(|s| s.lcd_override = !s.lcd_override);
+            }
+            KeyCode::Char('s') if self.caps.boot_sound => {
+                self.update_power(|s| s.boot_sound = !s.boot_sound);
+            }
+            KeyCode::Char('r') if self.caps.four_zone_kb => self.cycle_rgb_mode(),
             _ => {}
         }
     }
@@ -307,13 +318,25 @@ impl App {
             }
         }
     }
+
+    /// Cycle 4-zone RGB keyboard mode (Static -> Breathing -> Neon -> Wave -> etc.).
+    fn cycle_rgb_mode(&mut self) {
+        if let Ok(mut current) = self.port.keyboard_rgb() {
+            current.mode = (current.mode + 1) % 8;
+            if let Err(e) = self.port.set_keyboard_rgb(&current) {
+                self.set_action_error(e.to_string());
+            } else {
+                self.last_error = None;
+            }
+        }
+    }
 }
 
 #[cfg(test)]
 mod tests {
     use std::sync::{Arc, Mutex};
 
-    use rusense_core::{connect, MockSense, Profile, SenseError, Telemetry};
+    use rusense_core::{connect, KeyboardRgb, MockSense, Profile, SenseError, Telemetry};
 
     use super::*;
 
@@ -413,6 +436,22 @@ mod tests {
         fn set_back_logo(&mut self, on: bool) -> Result<(), SenseError> {
             self.inner.set_back_logo(on)
         }
+        fn keyboard_rgb(&self) -> Result<KeyboardRgb, SenseError> {
+            self.inner.keyboard_rgb()
+        }
+        fn set_keyboard_rgb(&mut self, rgb: &KeyboardRgb) -> Result<(), SenseError> {
+            self.inner.set_keyboard_rgb(rgb)
+        }
+        fn set_per_zone_rgb(
+            &mut self,
+            z1: &str,
+            z2: &str,
+            z3: &str,
+            z4: &str,
+            brightness: u8,
+        ) -> Result<(), SenseError> {
+            self.inner.set_per_zone_rgb(z1, z2, z3, z4, brightness)
+        }
     }
 
     /// App over a [`FailingPort`] plus the shared failure switches.
@@ -432,6 +471,8 @@ mod tests {
             power: true,
             four_zone_kb: false,
             back_logo: true,
+            lcd_override: true,
+            boot_sound: true,
         }
     }
 
@@ -685,6 +726,8 @@ mod tests {
             power: false,
             four_zone_kb: false,
             back_logo: false,
+            lcd_override: false,
+            boot_sound: false,
         });
         {
             let mut f = fail.lock().unwrap();

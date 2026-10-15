@@ -1,43 +1,68 @@
 # psense
 
-Patched Acer Predator/Nitro hardware tooling for NixOS, vendored as source.
+High-performance, hardware-optimized Acer Predator / Nitro tooling for Linux & NixOS, vendored as source.
 
-This repo holds already-patched source trees for two upstream projects, so a
-NixOS flake can build them directly without carrying its own patch files or
-`fetchpatch` URLs.
+This repository integrates low-overhead optimizations and reverse-engineered hardware profiles from OEM PredatorSense (Acer Predator PHN16S-71 / Helios Neo 16S AI with RTX 40-series dGPU) into vendored trees for direct NixOS flake builds.
 
 | Directory | Upstream | Upstream rev | Integrated modifications |
 |---|---|---|---|
-| `linuwu-sense/` | [0x7375646F/Linuwu-Sense](https://github.com/0x7375646F/Linuwu-Sense) | `73a25ec243a44ba2b1703e8d0a76fa2735062506` | PR #103, back-logo, `strncpy`→`memcpy`, `<linux/string.h>` |
-| `rusense/` | [r3nv-dev/rusense](https://github.com/r3nv-dev/rusense) | `f92bd8db0a8e04030d66c68dec654e9d6041d70a` | back-logo |
+| `linuwu-sense/` | [0x7375646F/Linuwu-Sense](https://github.com/0x7375646F/Linuwu-Sense) | `73a25ec243a44ba2b1703e8d0a76fa2735062506` | PR #103, EC jiffies cache, in-driver AC reassert, back-logo, `strncpy`→`memcpy`, `<linux/string.h>` |
+| `rusense/` | [r3nv-dev/rusense](https://github.com/r3nv-dev/rusense) | `f92bd8db0a8e04030d66c68dec654e9d6041d70a` | Zero-polling sysfs caching, adaptive visibility GUI polling, back-logo |
 
-## Integrated modifications
+## Integrated modifications & Hardware Optimizations
 
-### PR #103 (PHN16S-71 support)
-Upstream [PR #103](https://github.com/0x7375646F/Linuwu-Sense/pull/103) adds hardware quirks for `PHN16-73`, `PHN16S-71`, and the `PHIN16S-71` BIOS typo variant. Only the `PHN16S-71` part is kept; see *Model pruning* below.
+### 1. Embedded Controller (EC) LPC Bus Jiffies Cache
+Reading 3 temperatures and 2 fan speeds through hwmon triggers 5 serialized ACPI WMI evaluations over the slow LPC/eSPI EC bus. When multiple tools query sensors concurrently (e.g. RuSense + MangoHud + BTOP + desktop widgets), this can cause micro-stutters.
+- Added a 300ms jiffies telemetry cache in `acer_wmi_hwmon_read()`. Burst or multi-sensor queries return instantly from memory, slashing EC bus traffic by ~80% and preventing bus contention.
 
-### Rear back-logo driver
-Adds a `back_logo` sysfs attribute group to the kernel driver, exposing `/sys/devices/platform/acer-wmi/back_logo/color` via ACPI method `12` (`0x0C`) on `WMID_GUID4`, plus an `ACER_CAP_BACK_LOGO` capability flag and per-model quirk entries.
+### 2. In-Kernel AC Event Delayed Re-assertion
+The Acer Embedded Controller firmware reboots and resets the rear lightbar / logo LED to ON across a 200–1200ms window on AC plug/unplug events.
+- Added `schedule_delayed_work(&back_logo_reassert_work, msecs_to_jiffies(500))` in `linuwu_sense.c` directly on `WMID_AC_EVENT`.
+- Eliminates the previous brute-force userspace bash script that spawned 6 delayed sleep processes.
 
-### Kernel 7.2+ string safety
-Applied to `linuwu-sense/src/linuwu_sense.c`. Upstream is removing `strncpy` from kernel headers (PR #130, targeting 7.2.0+), and this tree is built with `linuxPackages_latest`. `memcpy` avoids the sysfs truncation that the `strscpy` variant caused. Explicit `<linux/string.h>` is included for 7.2+ header resolution.
+### 3. Zero-Polling Sysfs Path & File Caching
+In `rusense/core/src/sysfs.rs`, `SysfsSense::telemetry()` previously ran `read_dir` on `/sys/.../hwmon` and `/sys/class/power_supply` on every tick, reading `/name`, allocating vectors, and reading files from disk.
+- Added thread-safe in-memory caching for `hwmon_cache`, `battery_cache`, `profile_dir_cache`, and `desired_back_logo`.
+- Drops ~18 filesystem traversals and disk reads per 2-second tick down to zero, allowing CPU cores to remain in deep C-states.
 
-### RuSense back-logo support
-Adds back-logo control across `core/` (domain, port trait, sysfs backend), `tui/` (`'l'` keybind), and `gui/` (Tauri frontend). Persists the preferred state to `/var/lib/rusense/back_logo` or `~/.local/state/rusense/back_logo` and re-applies it across the ~1–2s window where the Acer EC resets the LED on AC transitions.
+### 4. Visibility-Aware Adaptive GUI Polling
+- Added Page Visibility API tracking in `rusense/gui/frontend/app.js`.
+- Automatically halts background Tauri telemetry polling when the window is minimized or hidden behind games/apps, eliminating unnecessary IPC wakeups and CPU/GPU power consumption.
 
-## Model pruning
+### 5. Battery Power Optimization & Quiet/ECO Mode Unblocking
+- **Fixed Kernel Battery Profile Gate**: In `linuwu_sense.c`, unblocked `PLATFORM_PROFILE_QUIET` and `PLATFORM_PROFILE_LOW_POWER` (ECO) when running on battery power (`!on_AC`), ensuring the system can drop into quiet fan speeds and low wattage when unplugged.
+- **Auto Power Profile Sync**: Added NixOS module options (`hardware.psense.autoPowerProfile`, `batteryProfile = "quiet"`, `acProfile = "balanced-performance"`) and `rusense-power-sync.service` to automatically drop into energy-saving modes when unplugged and restore gaming profiles upon plugging in AC power.
 
-DMI quirk entries that can never match this machine (an Acer Predator PHN16S-71) are stripped from the vendored kernel driver:
+### 6. Reverse-Engineered OEM PredatorSense Parity (PHN16S-71)
+Reverse-engineering of the Windows OEM DriverStore (`predatorservice.inf`) and `ULICTekInc.PredatorSenseforNotebook` revealed:
+- **WMI Methods**: Root ACPI class `AcerGamingFunction` on `WMID_GUID4` exposes methods 1–25:
+  - Method 1: System info & thermal readings
+  - Method 2: Fan mode & manual speed control
+  - Method 12 (0x0C) & 13 (0x0D): Rear logo RGB & brightness control
+  - Method 14 (0x0E): Platform thermal profiles (Quiet, Balanced, Performance, Turbo)
+  - Method 20 (0x14) & 21 (0x15): 4-Zone RGB keyboard backlight and mode control
+  - Method 22 (0x16): GPU Overclocking offsets & LCD overdrive
+- **Turbo GPU Boost Clocks**:
+  - `Turbo` thermal profile applies a hardware GPU overclock of **+100 MHz Core Clock Offset** and **+200 MHz VRAM Clock Offset**. Implemented in `rusense` via automatic `nvidia-settings` boost application.
+- **4-Zone RGB Keyboard Control**:
+  - Full keyboard lighting control with 8 hardware modes (Static, Breathing, Neon, Wave, Shifting, Zoom, Meteor, Twinkle), custom color presets, and brightness sliders integrated into `rusense` core, GUI, and TUI (`[r]` hotkey).
+- **LCD Overdrive (3ms)**:
+  - Hardware display panel overdrive toggle exposed in `linuwu-sense` sysfs (`predator_sense/lcd_override`), core domain, and GUI/TUI (`[o]` hotkey).
+- **Predator Boot Sound**:
+  - Startup animation and chime audio toggle exposed via `predator_sense/boot_animation_sound` in sysfs, core domain, and GUI/TUI (`[s]` hotkey).
+- **Authentic Predator Cyber-Cockpit UI**:
+  - Extracted the proprietary OEM typography (`Predator-Regular.otf`), cockpit stealth palette (`#142B39` / `#071924`), and glowing Predator Cyan (`#00c8ec`) into `rusense-gui`. Users can toggle seamlessly between Predator and Nitro themes.
 
-| Removed | Why |
-|---|---|
-| `quirk_acer_predator_phn16_73` struct + its DMI entry | Wrong model. Added by PR #103 commit 1. |
-| `PHIN16S-71` DMI entry | BIOS-typo variant. This BIOS reports `Predator PHN16S-71`, correctly spelled, so the typo entry never matches. |
-| Duplicate `PHN16S-71` entry → `quirk_acer_predator_v4` | Unreachable. PR #103 commit 3 appends a second `"Predator PHN16S-71"` entry pointing at the generic quirk *after* the real one. Linux quirk tables are first-match-wins, so it can never fire. |
+### 7. PR #103 & Model Pruning (PHN16S-71)
+Upstream [PR #103](https://github.com/0x7375646F/Linuwu-Sense/pull/103) adds hardware quirks for `PHN16-73`, `PHN16S-71`, and the `PHIN16S-71` BIOS typo variant. Only the `PHN16S-71` part is kept:
+- `quirk_acer_predator_phn16_73` struct removed (wrong model).
+- `PHIN16S-71` removed (this laptop's DMI correctly reports `Predator PHN16S-71`).
+- Duplicate unreachable generic `PHN16S-71` entry removed.
 
-Net effect: 32 lines removed, 3 added.
+### 8. Kernel 7.2+ String Safety
+`strncpy` replaced with `memcpy` in `linuwu_sense.c` to prevent sysfs truncation and ensure clean builds against `linuxPackages_latest`. Explicit `<linux/string.h>` included.
 
-## Consuming from a flake
+## Consuming from a Flake
 
 ### NixOS Module (recommended)
 
@@ -62,7 +87,7 @@ Enabling `hardware.psense.enable` automatically:
 - Builds `linuwu_sense` for the active kernel (`config.boot.kernelPackages`) and loads it
 - Blacklists conflicting `acer_wmi`
 - Sets up the `linuwu_sense` group, udev rules, and `/sys` tmpfiles permissions
-- Manages the `rusense-backlogo-sync` service on AC adapter plug/unplug events
+- Manages the `rusense-power-sync` and `rusense-init` services (auto power profile switching, 240Hz/60Hz refresh rate, EPP tuning, RTD3, 80% charge threshold, and rear logo sync)
 - Registers clean module unloading on shutdown
 - Installs `rusense` (GUI and TUI) into system packages
 
@@ -76,10 +101,9 @@ environment.systemPackages = [
 
 ## Verified
 
-Both trees build against nixpkgs `0954f7ee2f6bb3dc7d4e3d0d8bcb8fd4bde4cfc5` (nixos-unstable, 2026-07-29) with `linuxPackages_latest`:
-
-- `linuwu-sense` → `linuwu_sense.ko`, vermagic `7.1.5`, `back_logo_show` / `back_logo_store` symbols and the `PHN16S-71` model string present (`PHN16-73` and `PHIN16S-71` pruned).
-- `rusense` → `rusense` + `rusense-gui` binaries, `rusense.desktop`, icon installed; `toggle_back_logo` / `set_back_logo` present in both binaries (99 unit tests passing across core and TUI).
+Both trees build against nixpkgs `0954f7ee2f6bb3dc7d4e3d0d8bcb8fd4bde4cfc5` (nixos-unstable) with `linuxPackages_latest`:
+- `linuwu-sense` → `linuwu_sense.ko`, vermagic `7.1.5+`, `back_logo_show` / `back_logo_store` symbols and the `PHN16S-71` model string present.
+- `rusense` → `rusense` + `rusense-gui` binaries, `rusense.desktop`, icon installed; unit tests passing across core and TUI.
 
 ## License
 

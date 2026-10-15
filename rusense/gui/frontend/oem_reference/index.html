@@ -1,0 +1,36 @@
+‚<!DOCTYPE html><html lang="en"><head>
+  <meta charset="utf-8">
+  <title>PredatorSense</title>
+  <base href="./">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <link rel="icon" type="image/x-icon" href="favicon.ico">
+  <script type="text/javascript">
+    let urlParams = new URLSearchParams(window.location.search);
+    if (urlParams.has('theme')) {
+      var el = document.querySelector("html");
+      el.setAttribute("class", `theme-${urlParams.get('theme')}`);
+    }
+  </script>
+  <script src="shared_assets/js/mqtt.min.js"></script>
+  <!-- Global site tag (gtag.js) - Google Analytics -->
+  <!-- <script async src="https://www.googletagmanager.com/gtag/js?id=G-51SBTGEWD7"></script>
+  <script>
+    window.dataLayer = window.dataLayer || [];
+    function gtag() { dataLayer.push(arguments); }
+    gtag('js', new Date());
+    gtag('config', 'G-51SBTGEWD7');
+    </script> -->
+<style>*,:before,:after{box-sizing:border-box;border-width:0;border-style:solid;border-color:#e5e7eb}:before,:after{--tw-content:""}html{line-height:1.5;-webkit-text-size-adjust:100%;tab-size:4;font-family:ui-sans-serif,system-ui,-apple-system,BlinkMacSystemFont,Segoe UI,Roboto,Helvetica Neue,Arial,Noto Sans,sans-serif,"Apple Color Emoji","Segoe UI Emoji",Segoe UI Symbol,"Noto Color Emoji"}body{margin:0;line-height:inherit}*,:before,:after{--tw-translate-x:0;--tw-translate-y:0;--tw-rotate:0;--tw-skew-x:0;--tw-skew-y:0;--tw-scale-x:1;--tw-scale-y:1;--tw-pan-x: ;--tw-pan-y: ;--tw-pinch-zoom: ;--tw-scroll-snap-strictness:proximity;--tw-ordinal: ;--tw-slashed-zero: ;--tw-numeric-figure: ;--tw-numeric-spacing: ;--tw-numeric-fraction: ;--tw-ring-inset: ;--tw-ring-offset-width:0px;--tw-ring-offset-color:#fff;--tw-ring-color:rgb(63 131 248 / .5);--tw-ring-offset-shadow:0 0 #0000;--tw-ring-shadow:0 0 #0000;--tw-shadow:0 0 #0000;--tw-shadow-colored:0 0 #0000;--tw-blur: ;--tw-brightness: ;--tw-contrast: ;--tw-grayscale: ;--tw-hue-rotate: ;--tw-invert: ;--tw-saturate: ;--tw-sepia: ;--tw-drop-shadow: ;--tw-backdrop-blur: ;--tw-backdrop-brightness: ;--tw-backdrop-contrast: ;--tw-backdrop-grayscale: ;--tw-backdrop-hue-rotate: ;--tw-backdrop-invert: ;--tw-backdrop-opacity: ;--tw-backdrop-saturate: ;--tw-backdrop-sepia: }body{overflow:hidden}:root{--color-00:#000000;--color-0018:#001818;--color-ff:#ffffff;--color-c0:#c0c0c0;--color-80:#808080;--color-4c:#4c4c4c;--color-32:#323232;--color-lb:#00c8ec;--color-lig:#1eff96;--color-f39:#ff3399;--color-nb:#00b4ff;--color-gb:#0ed8cc;--color-gd:#006476;--color-mgd:#002e40;--color-btng:#01aac1;--color-hb:#0096b2;--color-d4:#D4E5DC;--color-4d:#4D9F75;--color-ad:#ADCEBE;--color-pk:#FF3399;--color-25:#252525;--color-42:#424242;--color-2c:#2c2c2c;--color-mainbg:#142B39;--color-secbg:#071924;--color-widgetbg:#00404c;--color-widgetsecbg:#00202c;--color-42-15:#42424216;--color-lb-10:#00c8ec1a;--color-lb-15:#00c8ec26;--color-lb-20:#00c8ec33;--color-lb-30:#00c8ec4d;--color-lb-33:#00c8ec54;--color-lb-40:#00c8ec66;--color-lb-50:#00c8ec80;--color-lb-59:#00c8ec96;--color-lb-70:#00c8ecb3;--color-lb-83:#00c8ecd4;--color-lig-30:#1eff964d;--color-gb-10:#0ed8cc1a;--color-gb-20:#0ed8cc33;--color-gb-30:#0ed8cc4d;--color-gb-50:#0ed8cc80;--color-gb-60:#0ed8cc99;--color-gb-70:#0ed8ccb3;--color-nb-30:#00b4ff4d;--color-80-30:#8080804d;--color-c0-30:#c0c0c04d;--color-4c-40:#4c4c4c66;--color-mgd-50:#002e4080;--color-mgd-70:#002e40b3;--color-00-33:#00000054;--color-00-50:#00000080;--color-00-80:#000000cc;--color-ff-10:#ffffff1a;--color-gd-20:#00647633;--color-gd-30:#0064764d;--color-gd-50:#00647680;--color-gd-60:#00647699}@font-face{font-family:regular;src:url(Predator-Regular.887d639d1b6ea399.otf) format("opentype")}*{font-family:regular,sans-serif;font-weight:400;font-stretch:normal;font-style:normal;letter-spacing:normal;cursor:default!important;-webkit-user-select:none;user-select:none}* :focus{outline:none}html,body{height:100%}head{background-color:var(--color-mgd)}</style><link rel="stylesheet" href="styles.8004cf8ace807ddd.css" media="print" onload="this.media='all'"><noscript><link rel="stylesheet" href="styles.8004cf8ace807ddd.css"></noscript></head>
+<body>
+  <app-root></app-root>
+  <!-- <script type="text/javascript">
+    (function (c, l, a, r, i, t, y) {
+      c[a] = c[a] || function () { (c[a].q = c[a].q || []).push(arguments) };
+      t = l.createElement(r); t.async = 1; t.src = "https://www.clarity.ms/tag/" + i;
+      y = l.getElementsByTagName(r)[0]; y.parentNode.insertBefore(t, y);
+
+    })(window, document, "clarity", "script", "bmaw3voh0o");
+  </script> -->
+<script src="runtime.60f5d62adc055c62.js" type="module"></script><script src="polyfills.9944947df1617d28.js" type="module"></script><script src="main.36216cba6144c871.js" type="module"></script>
+
+</body></html
